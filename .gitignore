@@ -1,0 +1,38 @@
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.eggs/
+*.log
+
+# Jupyter Notebook 检查点
+.ipynb_checkpoints/
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# VSCode 配置
+.vscode/
+
+
+# 模型文件
+*.onnx
+*.pth
+*.pt
+*.h5
+*.ckpt
+*.pb
+*.tflite
+*.weights
+*.yaml
+
+# 其他常见忽略
+.DS_Store
+Thumbs.db
