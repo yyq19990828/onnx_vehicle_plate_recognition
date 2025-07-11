@@ -4,13 +4,15 @@ import json
 import os
 import argparse
 import yaml
-from PIL import Image, ImageDraw, ImageFont
 
-from infer_onnx.det_onnx import DetONNX
-from infer_onnx.ocr_onnx import ColorLayerONNX, OCRONNX
-from utils.ocr_image_processing import process_plate_image, image_pretreatment, resize_norm_img
-from utils.ocr_post_processing import decode
-from utils.drawing import draw_detections
+from infer_onnx import DetONNX, ColorLayerONNX, OCRONNX
+from utils import (
+    process_plate_image,
+    image_pretreatment,
+    resize_norm_img,
+    decode,
+    draw_detections
+)
 
 def main(args):
     # Check output directory
