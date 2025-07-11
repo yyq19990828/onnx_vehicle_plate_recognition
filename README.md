@@ -1,63 +1,133 @@
-# 基于ONNX模型的车辆与车牌识别项目
+# ONNX 车辆和车牌识别
 
-本项目旨在实现一个完整的交通场景图像处理流程，包括使用ONNX模型进行车辆和车牌的目标检测，并对车牌进行OCR识别。
+本项目提供了一个使用 ONNX 模型的完整的车辆和车牌识别流程。它可以在图像中检测车辆和车牌，并对每个检测到的车牌进行号码、颜色以及单双层属性的识别。
 
-## 项目特色
+## 功能特性
 
-- **模型驱动**: 基于ONNX模型进行推理，易于部署和跨平台使用。
-- **模块化设计**: 代码结构清晰，分为目标检测、车牌预处理、OCR识别等模块。
-- **模拟实现**: 在没有真实模型的情况下，通过模拟函数完整演示了整个处理流程，方便快速验证和后续替换。
-- **结构化输出**: 将识别结果以JSON格式输出，同时在原图上进行标注，直观展示结果。
+- **车辆与车牌检测**: 使用 ONNX 模型检测图像中的车辆和车牌。
+- **车牌号码识别 (OCR)**: 识别车牌上的字符。
+- **车牌属性识别**: 识别车牌的颜色（如蓝色、黄色、绿色）和层类型（单层/双层）。
+- **灵活独立**: 使用 ONNX Runtime 在本地运行，不依赖特定的深度学习框架。
+- **详细输出**: 保存带有边界框和识别结果的标注图像，并提供包含详细信息的结构化 JSON 文件。
+
+## 处理流程
+
+```mermaid
+graph TD
+    A[输入图像] --> B(目标检测);
+    B --> C{检测到车牌?};
+    C -- 是 --> D[裁剪车牌区域];
+    C -- 否/处理完车牌后 --> J[绘制所有检测框];
+    D --> E(颜色与层数识别);
+    E --> F{是否为双层?};
+    F -- 是 --> G[分割拼接图像];
+    F -- 否 --> H[直接处理];
+    G --> I(OCR 识别);
+    H --> I;
+    I --> J;
+    J --> K[输出结果图像与JSON];
+```
+
+## 安装指南
+
+1.  **克隆仓库:**
+    ```bash
+    git clone https://github.com/your-username/onnx_vehicle_plate_recognition.git
+    cd onnx_vehicle_plate_recognition
+    ```
+
+2.  **安装依赖:**
+    建议首先创建一个虚拟环境。
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## 使用方法
+
+使用必要的参数运行主脚本。
+
+```bash
+python main.py --model-path /path/to/your/detection_model.onnx --input-image /path/to/your/image.jpg
+```
+
+### 命令行参数
+
+-   `--model-path` (必需): 指向主 ONNX 检测模型文件的路径。
+-   `--input-image`: 输入图像的路径。 (默认: `data/sample.jpg`)
+-   `--output-dir`: 保存输出结果（图像和 JSON）的目录。 (默认: `runs`)
+-   `--color-layer-model`: 指向颜色和层分类 ONNX 模型的路径。 (默认: `models/color_layer.onnx`)
+-   `--ocr-model`: 指向车牌 OCR ONNX 模型的路径。 (默认: `models/ocr.onnx`)
+-   `--ocr-dict-yaml`: 指向 OCR 字符字典文件的路径。 (默认: `models/ocr_dict.yaml`)
+
+### 示例
+
+```bash
+python main.py --model-path models/yolov8s_640.onnx --input-image data/sample.jpg
+```
+
+## 模型说明
+
+本项目需要三种类型的 ONNX 模型，应放置在 `models/` 目录下：
+
+1.  **检测模型**: 用于检测车辆和车牌的通用目标检测模型（例如 YOLO）。
+2.  **颜色与层模型 (`color_layer.onnx`)**: 一个分类模型，接收裁剪后的车牌图像，并预测其颜色和单/双层属性。
+3.  **OCR 模型 (`ocr.onnx`)**: 在处理后的车牌图像上执行光学字符识别（OCR）以读取车牌号码的模型。
+
+您还需要在 `models/` 目录中提供相应的配置文件（`det_config.yaml`, `plate_color_layer.yaml`, `ocr_dict.yaml`）。
 
 ## 项目结构
 
 ```
-onnx_vehicle_plate_recognition/
+.
 ├── data/
-│   ├── .gitkeep
-│   └── sample.jpg  (需要您自行添加一张测试图片)
+│   └── sample.jpg      # 示例图片
+├── infer_onnx/
+│   ├── det_onnx.py     # 检测模型推理
+│   ├── ocr_onnx.py     # OCR 模型推理
+│   └── ...
 ├── models/
-│   └── .gitkeep    (请将您的ONNX模型文件放在这里)
+│   ├── det_config.yaml # 检测配置文件
+│   ├── ocr_dict.yaml   # OCR 字典
+│   └── ...             # ONNX 模型文件
 ├── runs/
-│   └── .gitkeep    (运行结果将保存在这里)
-├── main.py         (主程序)
-├── requirements.txt(项目依赖)
-└── README.md       (项目说明)
-```
-
-## 安装
-
-1.  克隆或下载本项目。
-2.  安装所需的Python依赖库：
-
-```bash
-pip install -r requirements.txt
-```
-
-## 使用方法
-
-1.  在 `data/` 目录下放置一张名为 `sample.jpg` 的测试图片。
-2.  (可选) 将您的目标检测和OCR ONNX模型文件放入 `models/` 目录。
-3.  运行主程序：
-
-```bash
-python main.py
-```
-
-您也可以通过命令行参数指定输入和输出路径：
-
-```bash
-python main.py --input-image /path/to/your/image.jpg --output-dir /path/to/output/folder
+│   ├── result.jpg      # 输出图片
+│   └── result.json     # 输出 JSON
+├── utils/
+│   ├── drawing.py      # 绘制结果的工具
+│   └── ...
+├── main.py             # 运行流程的主脚本
+├── requirements.txt    # Python 依赖
+└── README.md
 ```
 
 ## 输出结果
 
-程序运行后，将在 `runs/` (或您指定的输出) 目录下生成：
+脚本会在指定的输出目录（默认为 `runs/`）中生成两个文件：
 
-- `result.jpg`: 标注了车辆和车牌识别结果的图片。
-- `result.json`: 结构化的识别结果，包含车辆和车牌的位置、类型及号码。
-- `plate_*.jpg`: 预处理后的车牌图片，用于调试和检查。
+1.  **`result.jpg`**: 标注了所有检测对象边界框的输入图像。对于车牌，会显示识别出的车牌号码、颜色和层数。
+2.  **`result.json`**: 一个 JSON 文件，包含每个检测目标的详细信息，包括：
+    -   `box`: 边界框的坐标。
+    -   `confidence`: 检测置信度分数。
+    -   `class_name`: 检测到的类别名称（例如 'plate'）。
+    -   `plate_text`: 识别出的车牌号码。
+    -   `plate_conf`: OCR 结果的置信度分数。
+    -   `color`: 识别出的车牌颜色。
+    -   `layer`: 识别出的车牌层类型。
 
-## 注意
+### JSON 输出示例
 
-当前版本的 `main.py` 使用的是**模拟函数**来代替真实的ONNX模型推理。要使用您自己的模型，您需要修改 `detect_objects` 和 `recognize_plate_ocr` 函数，以加载您的 `.onnx` 文件并执行实际的推理操作。
+```json
+{
+    "detections": [
+        {
+            "box": [420, 529, 509, 562],
+            "confidence": 0.93,
+            "class_id": 0,
+            "class_name": "plate",
+            "plate_text": "苏A88888",
+            "plate_conf": 0.95,
+            "color": "blue",
+            "layer": "single"
+        }
+    ]
+}
