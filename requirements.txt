@@ -1,4 +1,4 @@
 onnxruntime
-opencv-python
+opencv-contrib-python
 numpy
 pyyaml

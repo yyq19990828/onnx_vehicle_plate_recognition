@@ -4,28 +4,42 @@
 
 ## 功能特性
 
+- **多源输入**: 支持图像、视频文件和实时摄像头输入。
 - **车辆与车牌检测**: 使用 ONNX 模型检测图像中的车辆和车牌。
 - **车牌号码识别 (OCR)**: 识别车牌上的字符。
 - **车牌属性识别**: 识别车牌的颜色（如蓝色、黄色、绿色）和层类型（单层/双层）。
+- **灵活输出**: 可选择将结果保存到文件或在窗口中实时显示。
+- **性能优化**: 支持跳帧处理，以提高实时视频流的处理速度。
 - **灵活独立**: 使用 ONNX Runtime 在本地运行，不依赖特定的深度学习框架。
-- **详细输出**: 保存带有边界框和识别结果的标注图像，并提供包含详细信息的结构化 JSON 文件。
+- **详细输出**: 保存带有边界框和识别结果的标注图像/视频，并提供包含详细信息的结构化 JSON 文件。
 
 ## 处理流程
 
 ```mermaid
 graph TD
-    A[输入图像] --> B(目标检测);
-    B --> C{检测到车牌?};
-    C -- 是 --> D[裁剪车牌区域];
-    C -- 否/处理完车牌后 --> J[绘制所有检测框];
-    D --> E(颜色与层数识别);
-    E --> F{是否为双层?};
-    F -- 是 --> G[分割拼接图像];
-    F -- 否 --> H[直接处理];
-    G --> I(OCR 识别);
-    H --> I;
-    I --> J;
-    J --> K[输出结果图像与JSON];
+    A[开始] --> B{输入源是什么?};
+    B -- 图片 --> C[读取图片];
+    B -- 视频文件 --> D[打开视频文件];
+    B -- 摄像头 --> E[打开摄像头];
+
+    C --> F[处理帧];
+    D --> G[循环读取视频帧];
+    E --> G;
+
+    G -- 有帧 --> H[处理帧];
+    G -- 无帧 --> I[结束];
+
+    H --> J{输出模式是什么?};
+    F --> J;
+
+    J -- 保存 --> K[写入结果图片/视频帧];
+    J -- 显示 --> L[显示结果图片/视频帧];
+
+    K --> M{还有更多帧?};
+    L --> M;
+
+    M -- 是 --> G;
+    M -- 否 --> I;
 ```
 
 ## 安装指南
@@ -46,14 +60,13 @@ graph TD
 
 使用必要的参数运行主脚本。
 
-```bash
-python main.py --model-path /path/to/your/detection_model.onnx --input-image /path/to/your/image.jpg
-```
-
 ### 命令行参数
 
 -   `--model-path` (必需): 指向主 ONNX 检测模型文件的路径。
--   `--input-image`: 输入图像的路径。 (默认: `data/sample.jpg`)
+-   `--input`: 输入源的路径（图片/视频文件）或摄像头ID（例如 '0'）。 (默认: `data/sample.jpg`)
+-   `--source-type`: 输入源的类型。可选值: `image`, `video`, `camera`。 (默认: `image`)
+-   `--output-mode`: 输出模式。可选值: `save` (保存到文件), `show` (在窗口中显示)。 (默认: `save`)
+-   `--frame-skip`: 在视频处理中跳过的帧数，用于性能优化。 (默认: `0`)
 -   `--output-dir`: 保存输出结果（图像和 JSON）的目录。 (默认: `runs`)
 -   `--color-layer-model`: 指向颜色和层分类 ONNX 模型的路径。 (默认: `models/color_layer.onnx`)
 -   `--ocr-model`: 指向车牌 OCR ONNX 模型的路径。 (默认: `models/ocr.onnx`)
@@ -61,8 +74,19 @@ python main.py --model-path /path/to/your/detection_model.onnx --input-image /pa
 
 ### 示例
 
+#### 处理单张图片并保存结果
 ```bash
-python main.py --model-path models/yolov8s_640.onnx --input-image data/sample.jpg
+python main.py --model-path models/yolov8s_640.onnx --input data/sample.jpg --source-type image --output-mode save
+```
+
+#### 处理本地视频并实时显示结果
+```bash
+python main.py --model-path models/yolov8s_640.onnx --input /path/to/your/video.mp4 --source-type video --output-mode show
+```
+
+#### 使用摄像头进行实时识别
+```bash
+python main.py --model-path models/yolov8s_640.onnx --input 0 --source-type camera --output-mode show
 ```
 
 ## 模型说明

@@ -36,3 +36,23 @@ ENV/
 # 其他常见忽略
 .DS_Store
 Thumbs.db
+
+data/*.mp4
+data/*.avi
+data/*.mov
+data/*.mkv
+data/*.flv
+data/*.webm
+data/*.mp3
+data/*.wav
+
+run/*.mp4
+run/*.avi
+run/*.mov
+run/*.mkv
+run/*.flv
+run/*.webm
+run/*.mp3
+run/*.wav
+# Roo-specific files
+.roo/
