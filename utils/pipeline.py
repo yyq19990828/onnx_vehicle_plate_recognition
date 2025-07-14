@@ -17,7 +17,11 @@ def initialize_models(args):
     # Initialize the detector
     try:
         from infer_onnx import DetONNX
-        detector = DetONNX(args.model_path)
+        detector = DetONNX(
+            args.model_path,
+            conf_thres=args.conf_thres,
+            iou_thres=args.iou_thres
+        )
     except Exception as e:
         print(f"Error initializing detector: {e}")
         print("Please ensure the ONNX model path is correct and onnxruntime is installed.")
@@ -44,7 +48,7 @@ def initialize_models(args):
 
     return detector, color_layer_classifier, ocr_model, character, class_names, colors
 
-def process_frame(frame, detector, color_layer_classifier, ocr_model, character, class_names, colors):
+def process_frame(frame, detector, color_layer_classifier, ocr_model, character, class_names, colors, args):
     """
     Process a single frame for vehicle and plate detection and recognition.
     """
@@ -58,15 +62,22 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
 
     # 2. Process detections
     if detections and len(detections[0]) > 0:
+        # Use a specific confidence threshold for plates if provided
+        plate_conf_thres = args.plate_conf_thres if args.plate_conf_thres is not None else args.conf_thres
+
         for detection_idx, (*xyxy, conf, cls) in enumerate(detections[0]):
+            class_name = class_names[int(cls)] if int(cls) < len(class_names) else "unknown"
+
+            # Apply specific threshold for plates
+            if class_name == 'plate' and conf < plate_conf_thres:
+                continue
+            
             x1, y1, x2, y2 = map(int, xyxy)
             # Crop plate area
             plate_img = frame[y1:y2, x1:x2]
 
             if plate_img.size == 0:
                 continue
-
-            class_name = class_names[int(cls)] if int(cls) < len(class_names) else "unknown"
             
             plate_text, plate_conf, color_str, layer_str = "", 0.0, "", ""
             plate_info = None

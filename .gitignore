@@ -46,13 +46,4 @@ data/*.webm
 data/*.mp3
 data/*.wav
 
-run/*.mp4
-run/*.avi
-run/*.mov
-run/*.mkv
-run/*.flv
-run/*.webm
-run/*.mp3
-run/*.wav
-# Roo-specific files
-.roo/
+runs/

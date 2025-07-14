@@ -2,27 +2,12 @@
     "detections": [
         {
             "box": [
-                1794,
-                466,
-                1919,
-                685
-            ],
-            "confidence": 0.876916766166687,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                3,
-                594,
+                0,
+                596,
                 280,
-                873
+                878
             ],
-            "confidence": 0.8692342042922974,
+            "confidence": 3.604315757751465,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -32,12 +17,12 @@
         },
         {
             "box": [
-                1303,
-                619,
-                1637,
-                882
+                1307,
+                625,
+                1642,
+                879
             ],
-            "confidence": 0.8665421009063721,
+            "confidence": 3.516360282897949,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -47,27 +32,12 @@
         },
         {
             "box": [
-                105,
-                467,
-                336,
-                696
-            ],
-            "confidence": 0.8494116067886353,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
+                1495,
+                271,
                 1686,
-                403,
-                1890,
-                568
+                419
             ],
-            "confidence": 0.8302221298217773,
+            "confidence": 3.4371604919433594,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -77,12 +47,12 @@
         },
         {
             "box": [
-                1493,
-                262,
-                1668,
-                423
+                1602,
+                348,
+                1817,
+                486
             ],
-            "confidence": 0.8104003667831421,
+            "confidence": 3.3623695373535156,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -92,27 +62,12 @@
         },
         {
             "box": [
-                1596,
-                339,
-                1799,
-                485
+                1693,
+                413,
+                1916,
+                571
             ],
-            "confidence": 0.8095033168792725,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                234,
-                354,
-                436,
-                569
-            ],
-            "confidence": 0.8001432418823242,
+            "confidence": 3.333800792694092,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -123,26 +78,11 @@
         {
             "box": [
                 1453,
-                231,
-                1572,
-                366
-            ],
-            "confidence": 0.7866288423538208,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                1265,
                 233,
-                1421,
-                376
+                1600,
+                365
             ],
-            "confidence": 0.7858177423477173,
+            "confidence": 3.1805648803710938,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -152,12 +92,12 @@
         },
         {
             "box": [
-                375,
-                158,
-                460,
-                272
+                1272,
+                244,
+                1436,
+                374
             ],
-            "confidence": 0.7652624845504761,
+            "confidence": 3.021279811859131,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -167,12 +107,12 @@
         },
         {
             "box": [
-                305,
-                325,
-                563,
-                496
+                217,
+                368,
+                440,
+                567
             ],
-            "confidence": 0.7215609550476074,
+            "confidence": 2.9940781593322754,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -182,12 +122,57 @@
         },
         {
             "box": [
-                1049,
-                57,
-                1115,
+                79,
+                475,
+                336,
+                686
+            ],
+            "confidence": 2.941065788269043,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                1231,
+                141,
+                1353,
+                239
+            ],
+            "confidence": 2.726612091064453,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                360,
+                168,
+                473,
+                269
+            ],
+            "confidence": 2.6626296043395996,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                1060,
+                59,
+                1124,
                 111
             ],
-            "confidence": 0.7136420011520386,
+            "confidence": 2.617666244506836,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -197,12 +182,12 @@
         },
         {
             "box": [
-                1227,
-                149,
-                1312,
-                240
+                595,
+                69,
+                676,
+                131
             ],
-            "confidence": 0.700824499130249,
+            "confidence": 2.4326720237731934,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -212,12 +197,12 @@
         },
         {
             "box": [
-                1189,
-                115,
-                1260,
-                204
+                1794,
+                474,
+                1919,
+                685
             ],
-            "confidence": 0.6973637342453003,
+            "confidence": 2.402280330657959,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -227,117 +212,27 @@
         },
         {
             "box": [
-                303,
-                202,
-                406,
-                353
+                38,
+                830,
+                106,
+                851
             ],
-            "confidence": 0.6898953914642334,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                338,
-                198,
-                420,
-                315
-            ],
-            "confidence": 0.6660506725311279,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                1171,
-                109,
-                1232,
-                189
-            ],
-            "confidence": 0.6609424948692322,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                427,
-                114,
-                497,
-                220
-            ],
-            "confidence": 0.654525637626648,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                1212,
-                133,
-                1284,
-                223
-            ],
-            "confidence": 0.6517618298530579,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                449,
-                101,
-                513,
-                198
-            ],
-            "confidence": 0.6426812410354614,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                43,
-                824,
-                104,
-                855
-            ],
-            "confidence": 0.6334506273269653,
+            "confidence": 2.295553207397461,
             "class_id": 13,
             "class_name": "plate",
             "plate_text": "苏UNQ757",
-            "plate_conf": 0.9999801516532898,
+            "plate_conf": 0.9999980926513672,
             "color": "blue",
             "layer": "single"
         },
         {
             "box": [
-                249,
-                248,
-                384,
-                407
+                267,
+                334,
+                565,
+                487
             ],
-            "confidence": 0.6326541900634766,
+            "confidence": 2.2930312156677246,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -347,12 +242,12 @@
         },
         {
             "box": [
-                1147,
-                96,
-                1203,
-                169
+                843,
+                24,
+                894,
+                65
             ],
-            "confidence": 0.6288689374923706,
+            "confidence": 2.2707290649414062,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -362,12 +257,12 @@
         },
         {
             "box": [
-                481,
-                89,
-                534,
-                167
+                243,
+                264,
+                410,
+                387
             ],
-            "confidence": 0.6248854398727417,
+            "confidence": 2.2346019744873047,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -377,117 +272,27 @@
         },
         {
             "box": [
-                503,
-                64,
-                558,
-                140
+                1492,
+                775,
+                1557,
+                795
             ],
-            "confidence": 0.6019130945205688,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                1129,
-                92,
-                1182,
-                160
-            ],
-            "confidence": 0.6018233895301819,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                245,
-                297,
-                433,
-                495
-            ],
-            "confidence": 0.5930496454238892,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                1106,
-                80,
-                1160,
-                146
-            ],
-            "confidence": 0.5929974317550659,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                389,
-                38,
-                433,
-                81
-            ],
-            "confidence": 0.57079017162323,
-            "class_id": 5,
-            "class_name": "bicycle",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                1268,
-                182,
-                1387,
-                273
-            ],
-            "confidence": 0.5649077296257019,
-            "class_id": 0,
-            "class_name": "car",
-            "plate_text": "",
-            "plate_conf": 0.0,
-            "color": "",
-            "layer": ""
-        },
-        {
-            "box": [
-                1496,
-                769,
-                1550,
-                797
-            ],
-            "confidence": 0.5576131343841553,
+            "confidence": 2.151977062225342,
             "class_id": 13,
             "class_name": "plate",
-            "plate_text": "苏ETR522",
-            "plate_conf": 0.966370165348053,
-            "color": "green",
+            "plate_text": "苏ETR523",
+            "plate_conf": 0.9999979138374329,
+            "color": "blue",
             "layer": "single"
         },
         {
             "box": [
-                750,
-                8,
-                803,
-                47
+                1144,
+                98,
+                1220,
+                163
             ],
-            "confidence": 0.5385103225708008,
+            "confidence": 2.0516514778137207,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -497,12 +302,102 @@
         },
         {
             "box": [
-                1397,
+                1194,
+                124,
+                1292,
+                200
+            ],
+            "confidence": 2.0183563232421875,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                1166,
+                106,
+                1247,
+                177
+            ],
+            "confidence": 2.005580425262451,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                1274,
+                177,
+                1400,
+                265
+            ],
+            "confidence": 2.0037522315979004,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                505,
+                65,
+                573,
+                128
+            ],
+            "confidence": 1.9925312995910645,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                1117,
+                93,
+                1189,
+                150
+            ],
+            "confidence": 1.941087245941162,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                287,
+                220,
+                421,
+                324
+            ],
+            "confidence": 1.7194318771362305,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                1382,
                 228,
-                1475,
-                331
+                1503,
+                330
             ],
-            "confidence": 0.5384409427642822,
+            "confidence": 1.7138729095458984,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",
@@ -512,12 +407,27 @@
         },
         {
             "box": [
-                830,
-                108,
-                858,
-                190
+                494,
+                448,
+                530,
+                463
             ],
-            "confidence": 0.5260844230651855,
+            "confidence": 1.6866297721862793,
+            "class_id": 13,
+            "class_name": "plate",
+            "plate_text": "苏E50MC2",
+            "plate_conf": 0.998423159122467,
+            "color": "blue",
+            "layer": "single"
+        },
+        {
+            "box": [
+                825,
+                113,
+                857,
+                191
+            ],
+            "confidence": 1.6767387390136719,
             "class_id": 9,
             "class_name": "pedestrain",
             "plate_text": "",
@@ -527,12 +437,147 @@
         },
         {
             "box": [
-                839,
-                14,
-                878,
-                64
+                1358,
+                298,
+                1391,
+                308
             ],
-            "confidence": 0.5226255059242249,
+            "confidence": 1.5004072189331055,
+            "class_id": 13,
+            "class_name": "plate",
+            "plate_text": "苏PP295V",
+            "plate_conf": 0.986063539981842,
+            "color": "blue",
+            "layer": "single"
+        },
+        {
+            "box": [
+                759,
+                13,
+                809,
+                48
+            ],
+            "confidence": 1.3944721221923828,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                409,
+                288,
+                457,
+                394
+            ],
+            "confidence": 1.2008962631225586,
+            "class_id": 9,
+            "class_name": "pedestrain",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                466,
+                96,
+                545,
+                164
+            ],
+            "confidence": 1.1814851760864258,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                414,
+                125,
+                508,
+                211
+            ],
+            "confidence": 1.1744780540466309,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                400,
+                149,
+                492,
+                236
+            ],
+            "confidence": 1.0804133415222168,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                392,
+                47,
+                442,
+                78
+            ],
+            "confidence": 0.9105348587036133,
+            "class_id": 5,
+            "class_name": "bicycle",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                1322,
+                200,
+                1458,
+                294
+            ],
+            "confidence": 0.8393197059631348,
+            "class_id": 0,
+            "class_name": "car",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                318,
+                30,
+                343,
+                74
+            ],
+            "confidence": 0.7612690925598145,
+            "class_id": 6,
+            "class_name": "cyclist",
+            "plate_text": "",
+            "plate_conf": 0.0,
+            "color": "",
+            "layer": ""
+        },
+        {
+            "box": [
+                575,
+                60,
+                635,
+                114
+            ],
+            "confidence": 0.6759653091430664,
             "class_id": 0,
             "class_name": "car",
             "plate_text": "",

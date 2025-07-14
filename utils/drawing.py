@@ -15,9 +15,10 @@ def draw_detections(image, detections, class_names, colors, plate_results=None, 
     if font_found:
         try:
             # 尝试加载粗体字重
-            font = ImageFont.truetype(font_path, 20, layout_engine=ImageFont.LAYOUT_RAQM)
+            # Removed layout_engine for compatibility with older Pillow versions.
+            font = ImageFont.truetype(font_path, 20)
             font.set_variation_by_name('Bold')
-        except (IOError, ValueError):
+        except (IOError, ValueError, AttributeError):
              try:
                 # 如果失败，回退到常规字体
                 font = ImageFont.truetype(font_path, 20)

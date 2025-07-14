@@ -27,7 +27,7 @@ def main(args):
 
         # Process the single image
         result_img, output_data = process_frame(
-            img, detector, color_layer_classifier, ocr_model, character, class_names, colors
+            img, detector, color_layer_classifier, ocr_model, character, class_names, colors, args
         )
 
         if args.output_mode == 'save':
@@ -90,7 +90,7 @@ def main(args):
             if frame_count % (args.frame_skip + 1) == 0:
                 # Process frame
                 result_frame, _ = process_frame(
-                    frame, detector, color_layer_classifier, ocr_model, character, class_names, colors
+                    frame, detector, color_layer_classifier, ocr_model, character, class_names, colors, args
                 )
             else:
                 result_frame = frame # Use original frame if skipped
@@ -120,6 +120,9 @@ if __name__ == '__main__':
     parser.add_argument('--output-mode', type=str, choices=['save', 'show'], default='save', help='Output mode: save to file or show in a window.')
     parser.add_argument('--frame-skip', type=int, default=0, help='Number of frames to skip between processing.')
     parser.add_argument('--output-dir', type=str, default='runs', help='Directory to save output results.')
+    parser.add_argument('--conf-thres', type=float, default=0.5, help='Confidence threshold for detection.')
+    parser.add_argument('--iou-thres', type=float, default=0.5, help='IoU threshold for NMS.')
+    parser.add_argument('--plate-conf-thres', type=float, default=None, help='Specific confidence threshold for plates.')
     parser.add_argument('--color-layer-model', type=str, default='models/color_layer.onnx', help='Path to color/layer ONNX model.')
     parser.add_argument('--ocr-model', type=str, default='models/ocr.onnx', help='Path to OCR ONNX model.')
     parser.add_argument('--ocr-dict-yaml', type=str, default='models/ocr_dict.yaml', help='Path to OCR dict YAML file.')
