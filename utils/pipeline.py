@@ -55,9 +55,7 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
     # 1. Object Detection
     detections, original_shape = detector(frame)
 
-    output_data = {
-        "detections": []
-    }
+    output_data = []
     plate_results = []
 
     # 2. Process detections
@@ -72,7 +70,11 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
             if class_name == 'plate' and conf < plate_conf_thres:
                 continue
             
-            x1, y1, x2, y2 = map(int, xyxy)
+            # Keep float values for JSON output, ensuring they are standard Python floats
+            float_xyxy = [float(c) for c in xyxy]
+            
+            # Use integer values for image processing (cropping, drawing)
+            x1, y1, x2, y2 = map(int, float_xyxy)
 
             plate_text, plate_conf, color_str, layer_str = "", 0.0, "", ""
             plate_info = None
@@ -129,16 +131,22 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
             
             plate_results.append(plate_info)
 
-            output_data["detections"].append({
-                "box": [x1, y1, x2, y2],
-                "confidence": float(conf),
-                "class_id": int(cls),
-                "class_name": class_name,
-                "plate_text": plate_text,
-                "plate_conf": plate_conf,
-                "color": color_str,
-                "layer": layer_str
-            })
+            if class_name == 'plate':
+                output_data.append({
+                    "plate_box2d": float_xyxy,
+                    "plate_name": plate_text,
+                    "plate_color": color_str,
+                    "plate_layer": layer_str
+                })
+            else:
+                # Note: Vehicle color is not detected by the current model.
+                # This is a placeholder.
+                vehicle_color = "unknown"
+                output_data.append({
+                    "type": class_name,
+                    "box2d": float_xyxy,
+                    "color": vehicle_color
+                })
 
     # 3. Draw results
     if detections and len(detections[0]) > 0:
