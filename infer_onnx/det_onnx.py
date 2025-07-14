@@ -26,7 +26,14 @@ class DetONNX:
         self.iou_thres = iou_thres
 
         # Create an ONNX Runtime session
-        self.session = onnxruntime.InferenceSession(self.onnx_path)
+        available_providers = onnxruntime.get_available_providers()
+        if 'CUDAExecutionProvider' in available_providers:
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+            providers = ['CPUExecutionProvider']
+            print("Warning: CUDAExecutionProvider not available. Running on CPU.")
+        
+        self.session = onnxruntime.InferenceSession(self.onnx_path, providers=providers)
         self.input_name = self.session.get_inputs()[0].name
         self.output_names = [output.name for output in self.session.get_outputs()]
 

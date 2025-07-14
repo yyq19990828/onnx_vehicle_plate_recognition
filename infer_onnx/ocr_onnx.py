@@ -5,7 +5,13 @@ class ColorLayerONNX:
     """
     颜色与层数ONNX推理类
     """
-    def __init__(self, model_path, providers=['CUDAExecutionProvider', 'CPUExecutionProvider']):
+    def __init__(self, model_path):
+        available_providers = onnxruntime.get_available_providers()
+        if 'CUDAExecutionProvider' in available_providers:
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+            providers = ['CPUExecutionProvider']
+            print("Warning: CUDAExecutionProvider not available for ColorLayerONNX. Running on CPU.")
         self.session = onnxruntime.InferenceSession(model_path, providers=providers)
         self.input_name = self.session.get_inputs()[0].name
 
@@ -25,7 +31,13 @@ class OCRONNX:
     """
     OCR字符识别ONNX推理类
     """
-    def __init__(self, model_path, providers=['CUDAExecutionProvider', 'CPUExecutionProvider']):
+    def __init__(self, model_path):
+        available_providers = onnxruntime.get_available_providers()
+        if 'CUDAExecutionProvider' in available_providers:
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+            providers = ['CPUExecutionProvider']
+            print("Warning: CUDAExecutionProvider not available for OCRONNX. Running on CPU.")
         self.session = onnxruntime.InferenceSession(model_path, providers=providers)
         self.input_names = [i.name for i in self.session.get_inputs()]
         self.output_names = [o.name for o in self.session.get_outputs()]
