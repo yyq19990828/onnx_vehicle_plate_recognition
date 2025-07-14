@@ -73,16 +73,28 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
                 continue
             
             x1, y1, x2, y2 = map(int, xyxy)
-            # Crop plate area
-            plate_img = frame[y1:y2, x1:x2]
 
-            if plate_img.size == 0:
-                continue
-            
             plate_text, plate_conf, color_str, layer_str = "", 0.0, "", ""
             plate_info = None
             
             if class_name == 'plate':
+                # --- Start of modification: Enlarge bbox for OCR ---
+                h_img, w_img, _ = frame.shape
+                
+                # Calculate expanded bbox for better OCR. The original bbox (x1,y1,x2,y2) is preserved for drawing.
+                w, h = x2 - x1, y2 - y1
+                exp_x1 = int(max(0, x1 - w * 0.1))
+                exp_y1 = int(max(0, y1 - h * 0.1))
+                exp_x2 = int(min(w_img, x2 + w * 0.1))
+                exp_y2 = int(min(h_img, y2 + h * 0.1))
+                
+                # Crop with expanded bbox for processing
+                plate_img = frame[exp_y1:exp_y2, exp_x1:exp_x2]
+                
+                if plate_img.size == 0:
+                    continue
+                # --- End of modification ---
+
                 # Color/Layer recognition
                 img_rgb = cv2.cvtColor(plate_img, cv2.COLOR_BGR2RGB)
                 color_input = image_pretreatment(img_rgb)
