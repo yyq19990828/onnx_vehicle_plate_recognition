@@ -111,7 +111,9 @@ def main(args):
             fps = int(cap.get(cv2.CAP_PROP_FPS))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            output_video_path = os.path.join(args.output_dir, "result.mp4")
+            # Use the same name as the input file for the output video
+            output_filename = os.path.basename(args.input) if source_type == 'video' else 'result.mp4'
+            output_video_path = os.path.join(args.output_dir, output_filename)
 
             # Try to use a more efficient codec (H.264), with a fallback to mp4v
             fourcc_h264 = cv2.VideoWriter_fourcc(*'avc1')
@@ -130,6 +132,7 @@ def main(args):
                 writer = None
 
         frame_count = 0
+        last_result_frame = None  # 保存上一次的检测结果
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
@@ -140,12 +143,18 @@ def main(args):
                 result_frame, _ = process_frame(
                     frame, detector, color_layer_classifier, ocr_model, character, class_names, colors, args
                 )
+                last_result_frame = result_frame.copy()  # 保存检测结果
             else:
-                result_frame = frame # Use original frame if skipped
+                # 如果跳帧，继续使用上一次的检测结果
+                if last_result_frame is not None:
+                    result_frame = last_result_frame
+                else:
+                    result_frame = frame  # 如果还没有检测结果，使用原始帧
 
             # Output
             if args.output_mode == 'save':
-                writer.write(result_frame)
+                if writer:  # 添加安全检查
+                    writer.write(result_frame)
             elif args.output_mode == 'show':
                 cv2.imshow("Result", result_frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
