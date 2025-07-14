@@ -45,5 +45,7 @@ data/*.flv
 data/*.webm
 data/*.mp3
 data/*.wav
+data/*.jpg
 
 runs/
+run.sh

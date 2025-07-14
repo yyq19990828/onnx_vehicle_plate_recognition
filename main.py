@@ -3,9 +3,26 @@ import numpy as np
 import json
 import os
 import argparse
-import yaml
 
 from utils.pipeline import initialize_models, process_frame
+
+def infer_source_type(input_path):
+    """
+    Infer the source type based on the input path.
+    """
+    input_path_lower = input_path.lower()
+    if os.path.isdir(input_path):
+        return 'folder'
+    elif any(input_path_lower.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']):
+        return 'image'
+    elif any(input_path_lower.endswith(ext) for ext in ['.mp4', '.avi', '.mov', '.mkv']):
+        return 'video'
+    elif input_path_lower.startswith('rtsp://'):
+        return 'rtsp'
+    elif input_path.isdigit():
+        return 'camera'
+    else:
+        return 'unknown'
 
 def main(args):
     # Check output directory
@@ -18,7 +35,9 @@ def main(args):
         return
     detector, color_layer_classifier, ocr_model, character, class_names, colors = models
 
-    if args.source_type == 'image':
+    source_type = infer_source_type(args.input)
+
+    if source_type == 'image':
         # Load image
         img = cv2.imread(args.input)
         if img is None:
@@ -32,12 +51,12 @@ def main(args):
 
         if args.output_mode == 'save':
             # Save the annotated image
-            output_image_path = os.path.join(args.output_dir, "result.jpg")
+            output_image_path = os.path.join(args.output_dir, os.path.basename(args.input))
             cv2.imwrite(output_image_path, result_img)
             print(f"Result image saved to {output_image_path}")
 
             # Save JSON results
-            output_json_path = os.path.join(args.output_dir, "result.json")
+            output_json_path = os.path.join(args.output_dir, os.path.splitext(os.path.basename(args.input))[0] + ".json")
             with open(output_json_path, 'w', encoding='utf-8') as f:
                 json.dump(output_data, f, ensure_ascii=False, indent=4)
             print(f"JSON results saved to {output_json_path}")
@@ -46,11 +65,40 @@ def main(args):
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
-    elif args.source_type in ['video', 'camera']:
+    elif source_type == 'folder':
+        image_files = [f for f in os.listdir(args.input) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff'))]
+        for image_file in image_files:
+            image_path = os.path.join(args.input, image_file)
+            img = cv2.imread(image_path)
+            if img is None:
+                print(f"Warning: Could not read image {image_path}, skipping.")
+                continue
+
+            result_img, output_data = process_frame(
+                img, detector, color_layer_classifier, ocr_model, character, class_names, colors, args
+            )
+
+            if args.output_mode == 'save':
+                output_image_path = os.path.join(args.output_dir, image_file)
+                cv2.imwrite(output_image_path, result_img)
+                print(f"Result image saved to {output_image_path}")
+
+                output_json_path = os.path.join(args.output_dir, os.path.splitext(image_file)[0] + ".json")
+                with open(output_json_path, 'w', encoding='utf-8') as f:
+                    json.dump(output_data, f, ensure_ascii=False, indent=4)
+                print(f"JSON results saved to {output_json_path}")
+            elif args.output_mode == 'show':
+                cv2.imshow(f"Result - {image_file}", result_img)
+                if cv2.waitKey(0) & 0xFF == ord('q'):
+                    break # Allow quitting with 'q'
+        cv2.destroyAllWindows()
+
+
+    elif source_type in ['video', 'rtsp', 'camera']:
         # Setup video capture
-        if args.source_type == 'camera':
+        if source_type == 'camera':
             cap = cv2.VideoCapture(int(args.input))
-        else:
+        else: # video or rtsp
             cap = cv2.VideoCapture(args.input)
 
         if not cap.isOpened():
@@ -116,7 +164,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='ONNX Vehicle and Plate Recognition')
     parser.add_argument('--model-path', type=str, required=True, help='Path to the ONNX detection model.')
     parser.add_argument('--input', type=str, default='data/sample.jpg', help='Path to input image/video or camera ID.')
-    parser.add_argument('--source-type', type=str, choices=['image', 'video', 'camera'], default='image', help='Type of input source.')
     parser.add_argument('--output-mode', type=str, choices=['save', 'show'], default='save', help='Output mode: save to file or show in a window.')
     parser.add_argument('--frame-skip', type=int, default=0, help='Number of frames to skip between processing.')
     parser.add_argument('--output-dir', type=str, default='runs', help='Directory to save output results.')
@@ -136,7 +183,8 @@ if __name__ == '__main__':
         # To run this script, you must provide a valid ONNX model.
     
     # Create a dummy sample image if it doesn't exist and input is an image
-    if args.source_type == 'image' and not os.path.exists(args.input):
+    source_type = infer_source_type(args.input)
+    if source_type == 'image' and not os.path.exists(args.input):
         if not os.path.exists('data'):
             os.makedirs('data')
         dummy_image = np.zeros((480, 640, 3), dtype=np.uint8)
