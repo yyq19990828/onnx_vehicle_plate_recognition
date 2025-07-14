@@ -5,6 +5,10 @@ def softmax(x, axis=1):
     e_x = np.exp(x - np.max(x, axis=axis, keepdims=True))
     return e_x / e_x.sum(axis=axis, keepdims=True)
 
+def sigmoid(x):
+    """Compute sigmoid values for each sets of scores in x."""
+    return 1 / (1 + np.exp(-x))
+
 def xywh2xyxy(x: np.ndarray) -> np.ndarray:
     """
     Convert bounding box coordinates from (x_center, y_center, width, height) to (x1, y1, x2, y2).
@@ -67,9 +71,9 @@ def non_max_suppression(
         # Filter out boxes where the max class score is below the confidence threshold.
         class_scores = x[:, 4:]
         
-        # Adaptive softmax: apply if scores are not probabilities (i.e., > 1)
+        # Adaptive normalization: apply sigmoid if scores are not probabilities (i.e., > 1)
         if np.max(class_scores) > 1:
-            class_scores = softmax(class_scores, axis=1)
+            class_scores = sigmoid(class_scores)
             
         conf = np.max(class_scores, axis=1, keepdims=True)
         
