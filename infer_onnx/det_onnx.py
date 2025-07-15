@@ -3,6 +3,7 @@ import numpy as np
 import logging
 from typing import List, Tuple
 
+from .utils import preload_onnx_libraries, get_best_available_providers
 from utils.image_processing import preprocess_image
 from utils.nms import non_max_suppression
 
@@ -12,6 +13,9 @@ class DetONNX:
     """
 
     def __init__(self, onnx_path: str, input_shape: Tuple[int, int] = (640, 640), conf_thres: float = 0.5, iou_thres: float = 0.5):
+        # Ensure ONNX Runtime libraries are preloaded if necessary
+        preload_onnx_libraries()
+
         """
         Initializes the DetONNX instance.
 
@@ -26,14 +30,8 @@ class DetONNX:
         self.conf_thres = conf_thres
         self.iou_thres = iou_thres
 
-        # Create an ONNX Runtime session
-        available_providers = onnxruntime.get_available_providers()
-        if 'CUDAExecutionProvider' in available_providers:
-            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        else:
-            providers = ['CPUExecutionProvider']
-            logging.warning("CUDAExecutionProvider not available. Running on CPU.")
-        
+        # Create an ONNX Runtime session using the best available providers
+        providers = get_best_available_providers(self.onnx_path)
         self.session = onnxruntime.InferenceSession(self.onnx_path, providers=providers)
         self.input_name = self.session.get_inputs()[0].name
         self.output_names = [output.name for output in self.session.get_outputs()]
