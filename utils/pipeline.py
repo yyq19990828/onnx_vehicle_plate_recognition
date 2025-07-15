@@ -59,11 +59,21 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
     output_data = []
     plate_results = []
 
-    # 2. Process all detections to gather data for JSON output
+    # 2. Process all detections to gather data for JSON and prepare for drawing
     if detections and len(detections[0]) > 0:
+        h_img, w_img, _ = frame.shape
+        roi_top_pixel = int(h_img * args.roi_top_ratio)
+
+        # Ensure detections are clipped within frame boundaries
+        clipped_detections = detections[0].copy()
+        clipped_detections[:, 0] = np.clip(clipped_detections[:, 0], 0, w_img)
+        clipped_detections[:, 1] = np.clip(clipped_detections[:, 1], 0, h_img)
+        clipped_detections[:, 2] = np.clip(clipped_detections[:, 2], 0, w_img)
+        clipped_detections[:, 3] = np.clip(clipped_detections[:, 3], 0, h_img)
+        
         plate_conf_thres = args.plate_conf_thres if args.plate_conf_thres is not None else args.conf_thres
 
-        for detection_idx, (*xyxy, conf, cls) in enumerate(detections[0]):
+        for detection_idx, (*xyxy, conf, cls) in enumerate(clipped_detections):
             class_name = class_names[int(cls)] if int(cls) < len(class_names) else "unknown"
 
             # Apply specific confidence threshold for plates
@@ -80,8 +90,6 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
             plate_info = None
 
             if class_name == 'plate':
-                h_img, w_img, _ = frame.shape
-                w, h = x2 - x1, y2 - y1
                 exp_x1 = int(max(0, x1 - w * 0.1))
                 exp_y1 = int(max(0, y1 - h * 0.1))
                 exp_x2 = int(min(w_img, x2 + w * 0.1))
@@ -111,11 +119,17 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
                     ocr_result = decode(character, preds_idx, preds_prob, is_remove_duplicate=True)
                     plate_text = ocr_result[0][0] if ocr_result else ""
                     
-                    plate_info = {"plate_text": plate_text, "color": color_str, "layer": layer_str}
+                    # Determine if OCR text should be displayed based on ROI and width
+                    should_display_ocr = (y1 >= roi_top_pixel) and (w > 50)
+                    
+                    plate_info = {
+                        "plate_text": plate_text, "color": color_str, "layer": layer_str,
+                        "should_display_ocr": should_display_ocr
+                    }
             
             plate_results.append(plate_info)
 
-            # Populate JSON data regardless of ROI
+            # Populate JSON data regardless of display logic
             if class_name == 'plate':
                 output_data.append({
                     "plate_box2d": float_xyxy, "plate_name": plate_text,
@@ -128,46 +142,8 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
                     "width": w, "height": h
                 })
 
-    # 3. Prepare for drawing: Filter detections based on ROI for visualization
-    drawable_detections = []
-    drawable_plate_results = []
-    if detections and len(detections[0]) > 0:
-        h_img, w_img, _ = frame.shape
-        roi_top_pixel = int(h_img * args.roi_top_ratio)
-
-        # Ensure detections are clipped within frame boundaries before drawing
-        clipped_detections = detections[0].copy()
-        clipped_detections[:, 0] = np.clip(clipped_detections[:, 0], 0, w_img)
-        clipped_detections[:, 1] = np.clip(clipped_detections[:, 1], 0, h_img)
-        clipped_detections[:, 2] = np.clip(clipped_detections[:, 2], 0, w_img)
-        clipped_detections[:, 3] = np.clip(clipped_detections[:, 3], 0, h_img)
-
-        for i, det in enumerate(clipped_detections):
-            *xyxy, conf, cls = det
-            class_name = class_names[int(cls)] if int(cls) < len(class_names) else "unknown"
-            
-            # ROI and width only affect plates for drawing purposes
-            if class_name == 'plate':
-                x1, y1, x2, _ = xyxy
-                width = x2 - x1
-                
-                # Apply ROI filter
-                if y1 < roi_top_pixel:
-                    continue # Skip this plate for drawing
-                
-                # Apply width filter
-                if width <= 50:
-                    continue # Skip this plate for drawing
-
-            drawable_detections.append(det)
-            if i < len(plate_results):
-                drawable_plate_results.append(plate_results[i])
-        
-        # Convert to numpy array for the drawing function
-        drawable_detections_np = [np.array(drawable_detections)] if drawable_detections else [np.array([])]
-    else:
-        drawable_detections_np = detections # No detections, pass original empty list
-
-    result_frame = draw_detections(frame.copy(), drawable_detections_np, class_names, colors, plate_results=drawable_plate_results)
+    # 3. Draw detections
+    # The original detections array is used; filtering of what to draw is handled by the drawing function.
+    result_frame = draw_detections(frame.copy(), detections, class_names, colors, plate_results=plate_results)
 
     return result_frame, output_data
