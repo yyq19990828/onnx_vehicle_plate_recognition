@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import os
+import logging
 from PIL import Image, ImageDraw, ImageFont
 
 def draw_detections(image, detections, class_names, colors, plate_results=None, font_path="SourceHanSans-VF.ttf"):
@@ -19,16 +20,16 @@ def draw_detections(image, detections, class_names, colors, plate_results=None, 
             font = ImageFont.truetype(font_path, 20)
             font.set_variation_by_name('Bold')
         except (IOError, ValueError, AttributeError):
-             try:
+            try:
                 # 如果失败，回退到常规字体
                 font = ImageFont.truetype(font_path, 20)
-                print(f"Warning: Could not load bold variation for {font_path}. Using regular weight.")
-             except IOError:
-                print(f"Warning: Could not load font file at {font_path}. Using default font.")
+                logging.warning(f"Could not load bold variation for {font_path}. Using regular weight.")
+            except IOError:
+                logging.warning(f"Could not load font file at {font_path}. Using default font.")
                 font = ImageFont.load_default()
                 font_found = False # Treat as not found if loading fails
     else:
-        print(f"Warning: Font file not found at {font_path}. Chinese characters will not be displayed. Using default font.")
+        logging.warning(f"Font file not found at {font_path}. Chinese characters will not be displayed. Using default font.")
         font = ImageFont.load_default()
 
     for idx, det in enumerate(detections):

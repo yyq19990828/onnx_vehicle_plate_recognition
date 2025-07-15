@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import logging
 
 def detect_skew_angle(image):
     """检测图像的倾斜角度，输入灰度图像，返回角度（度）"""
@@ -62,7 +63,7 @@ def process_plate_image(img, is_double_layer=False, verbose=False):
     """
     if img is None or img.size == 0:
         if verbose:
-            print("输入图像为空")
+            logging.warning("Input image is empty in process_plate_image")
         return None
     # 灰度
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -82,7 +83,7 @@ def process_plate_image(img, is_double_layer=False, verbose=False):
     top_h, top_w = top_part.shape[:2]
     if bottom_h <= 0 or bottom_w <= 0 or top_h <= 0 or top_w <= 0:
         if verbose:
-            print("分割后部分为空")
+            logging.warning("Part of the plate is empty after splitting.")
         return None
     # 上层缩放到下层高度并收窄
     target_height = bottom_h

@@ -3,8 +3,10 @@ import numpy as np
 import json
 import os
 import argparse
+import logging
 
 from utils.pipeline import initialize_models, process_frame
+from utils.logging_config import setup_logger
 
 def infer_source_type(input_path):
     """
@@ -25,9 +27,13 @@ def infer_source_type(input_path):
         return 'unknown'
 
 def main(args):
+    # Setup logger
+    setup_logger(logging.getLevelName(args.log_level))
+
     # Check output directory
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
+        logging.info(f"Created output directory: {args.output_dir}")
 
     # Initialize models
     models = initialize_models(args)
@@ -41,7 +47,7 @@ def main(args):
         # Load image
         img = cv2.imread(args.input)
         if img is None:
-            print(f"Error: Could not read image {args.input}")
+            logging.error(f"Could not read image {args.input}")
             return
 
         # Process the single image
@@ -53,13 +59,13 @@ def main(args):
             # Save the annotated image
             output_image_path = os.path.join(args.output_dir, os.path.basename(args.input))
             cv2.imwrite(output_image_path, result_img)
-            print(f"Result image saved to {output_image_path}")
+            logging.info(f"Result image saved to {output_image_path}")
 
             # Save JSON results
             output_json_path = os.path.join(args.output_dir, os.path.splitext(os.path.basename(args.input))[0] + ".json")
             with open(output_json_path, 'w', encoding='utf-8') as f:
                 json.dump(output_data, f, ensure_ascii=False, indent=4)
-            print(f"JSON results saved to {output_json_path}")
+            logging.info(f"JSON results saved to {output_json_path}")
         elif args.output_mode == 'show':
             cv2.imshow("Result", result_img)
             cv2.waitKey(0)
@@ -71,7 +77,7 @@ def main(args):
             image_path = os.path.join(args.input, image_file)
             img = cv2.imread(image_path)
             if img is None:
-                print(f"Warning: Could not read image {image_path}, skipping.")
+                logging.warning(f"Could not read image {image_path}, skipping.")
                 continue
 
             result_img, output_data = process_frame(
@@ -81,12 +87,12 @@ def main(args):
             if args.output_mode == 'save':
                 output_image_path = os.path.join(args.output_dir, image_file)
                 cv2.imwrite(output_image_path, result_img)
-                print(f"Result image saved to {output_image_path}")
+                logging.info(f"Result image saved to {output_image_path}")
 
                 output_json_path = os.path.join(args.output_dir, os.path.splitext(image_file)[0] + ".json")
                 with open(output_json_path, 'w', encoding='utf-8') as f:
                     json.dump(output_data, f, ensure_ascii=False, indent=4)
-                print(f"JSON results saved to {output_json_path}")
+                logging.info(f"JSON results saved to {output_json_path}")
             elif args.output_mode == 'show':
                 cv2.imshow(f"Result - {image_file}", result_img)
                 if cv2.waitKey(0) & 0xFF == ord('q'):
@@ -102,7 +108,7 @@ def main(args):
             cap = cv2.VideoCapture(args.input)
 
         if not cap.isOpened():
-            print(f"Error: Could not open video source {args.input}")
+            logging.error(f"Could not open video source {args.input}")
             return
 
         # Setup video writer if saving
@@ -120,14 +126,14 @@ def main(args):
             writer = cv2.VideoWriter(output_video_path, fourcc_h264, fps, (width, height))
             
             if not writer.isOpened():
-                print("Warning: H.264 codec ('avc1') not available. Falling back to 'mp4v'. Output file may be large.")
+                logging.warning("H.264 codec ('avc1') not available. Falling back to 'mp4v'. Output file may be large.")
                 fourcc_mp4v = cv2.VideoWriter_fourcc(*'mp4v')
                 writer = cv2.VideoWriter(output_video_path, fourcc_mp4v, fps, (width, height))
 
             if writer.isOpened():
-                print(f"Saving result video to {output_video_path}")
+                logging.info(f"Saving result video to {output_video_path}")
             else:
-                print("Error: Could not open video writer. Cannot save video.")
+                logging.error("Could not open video writer. Cannot save video.")
                 # Set writer to None to avoid crashing in the loop
                 writer = None
 
@@ -183,12 +189,16 @@ if __name__ == '__main__':
     parser.add_argument('--color-layer-model', type=str, default='models/color_layer.onnx', help='Path to color/layer ONNX model.')
     parser.add_argument('--ocr-model', type=str, default='models/ocr.onnx', help='Path to OCR ONNX model.')
     parser.add_argument('--ocr-dict-yaml', type=str, default='models/ocr_dict.yaml', help='Path to OCR dict YAML file.')
+    parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help='Set the logging level.')
     
     args = parser.parse_args()
     
+    # Setup logger early to catch messages during setup
+    setup_logger(logging.getLevelName(args.log_level))
+
     # Create a dummy model file if it doesn't exist, as we don't have a real one yet.
     if not os.path.exists(args.model_path):
-        print(f"Warning: Model file not found at {args.model_path}. A real model is needed for inference.")
+        logging.warning(f"Model file not found at {args.model_path}. A real model is needed for inference.")
         # In a real scenario, you would not create a dummy file. This is for testing the script structure.
         # To run this script, you must provide a valid ONNX model.
     
@@ -199,6 +209,6 @@ if __name__ == '__main__':
             os.makedirs('data')
         dummy_image = np.zeros((480, 640, 3), dtype=np.uint8)
         cv2.imwrite(args.input, dummy_image)
-        print(f"Created a dummy sample image at {args.input}")
+        logging.info(f"Created a dummy sample image at {args.input}")
 
     main(args)

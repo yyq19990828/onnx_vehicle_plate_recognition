@@ -1,4 +1,4 @@
-onnxruntime
+onnxruntime-gpu[cuda,cudnn]
 opencv-contrib-python
 numpy
 pyyaml

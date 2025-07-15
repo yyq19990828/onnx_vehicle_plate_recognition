@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import yaml
+import logging
 
 from utils import (
     process_plate_image,
@@ -23,8 +24,8 @@ def initialize_models(args):
             iou_thres=args.iou_thres
         )
     except Exception as e:
-        print(f"Error initializing detector: {e}")
-        print("Please ensure the ONNX model path is correct and onnxruntime is installed.")
+        logging.error(f"Error initializing detector: {e}")
+        logging.error("Please ensure the ONNX model path is correct and onnxruntime is installed.")
         return None, None, None, None
 
     # Initialize color/layer and OCR models

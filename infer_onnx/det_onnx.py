@@ -1,5 +1,6 @@
 import onnxruntime
 import numpy as np
+import logging
 from typing import List, Tuple
 
 from utils.image_processing import preprocess_image
@@ -31,7 +32,7 @@ class DetONNX:
             providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
             providers = ['CPUExecutionProvider']
-            print("Warning: CUDAExecutionProvider not available. Running on CPU.")
+            logging.warning("CUDAExecutionProvider not available. Running on CPU.")
         
         self.session = onnxruntime.InferenceSession(self.onnx_path, providers=providers)
         self.input_name = self.session.get_inputs()[0].name

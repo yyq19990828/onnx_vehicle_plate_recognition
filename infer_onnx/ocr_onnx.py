@@ -1,5 +1,6 @@
 import onnxruntime
 import numpy as np
+import logging
 
 class ColorLayerONNX:
     """
@@ -11,7 +12,7 @@ class ColorLayerONNX:
             providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
             providers = ['CPUExecutionProvider']
-            print("Warning: CUDAExecutionProvider not available for ColorLayerONNX. Running on CPU.")
+            logging.warning("CUDAExecutionProvider not available for ColorLayerONNX. Running on CPU.")
         self.session = onnxruntime.InferenceSession(model_path, providers=providers)
         self.input_name = self.session.get_inputs()[0].name
 
@@ -37,7 +38,7 @@ class OCRONNX:
             providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
             providers = ['CPUExecutionProvider']
-            print("Warning: CUDAExecutionProvider not available for OCRONNX. Running on CPU.")
+            logging.warning("CUDAExecutionProvider not available for OCRONNX. Running on CPU.")
         self.session = onnxruntime.InferenceSession(model_path, providers=providers)
         self.input_names = [i.name for i in self.session.get_inputs()]
         self.output_names = [o.name for o in self.session.get_outputs()]
