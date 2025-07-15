@@ -69,6 +69,7 @@ graph TD
 -   `--frame-skip`: 在视频处理中跳过的帧数，用于性能优化。 (默认: `0`)
 -   `--conf-thres`: 通用检测置信度阈值。 (默认: `0.5`)
 -   `--iou-thres`: NMS的IoU阈值。 (默认: `0.5`)
+-   `--roi-top-ratio`: 检测感兴趣区域（ROI）的顶部比例，范围 [0.0, 1.0]。默认值为 0.5，表示只检测图像的下半部分。
 -   `--plate-conf-thres`: 专门用于车牌的置信度阈值 (如果未设置，则使用通用阈值)。
 -   `--output-dir`: 保存输出结果（图像和 JSON）的目录。 (默认: `runs`)
 -   `--color-layer-model`: 指向颜色和层分类 ONNX 模型的路径。 (默认: `models/color_layer.onnx`)

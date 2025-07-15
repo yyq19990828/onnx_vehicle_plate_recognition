@@ -62,13 +62,34 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
     if detections and len(detections[0]) > 0:
         # Use a specific confidence threshold for plates if provided
         plate_conf_thres = args.plate_conf_thres if args.plate_conf_thres is not None else args.conf_thres
+        
+        # ROI filtering for plates
+        h_img, _, _ = frame.shape
+        roi_top_pixel = int(h_img * args.roi_top_ratio)
+
+        filtered_detections = []
+        for det in detections[0]:
+            *xyxy, conf, cls = det
+            class_name = class_names[int(cls)] if int(cls) < len(class_names) else "unknown"
+            
+            # If it's a plate, check if it's within the ROI
+            if class_name == 'plate':
+                y1 = xyxy[1]
+                if y1 < roi_top_pixel:
+                    continue # Skip plate if it's above the ROI line
+            
+            # Apply specific confidence threshold for plates
+            if class_name == 'plate' and conf < plate_conf_thres:
+                continue
+
+            filtered_detections.append(det)
+        
+        # Replace original detections with filtered ones
+        detections[0] = np.array(filtered_detections) if filtered_detections else []
+
 
         for detection_idx, (*xyxy, conf, cls) in enumerate(detections[0]):
             class_name = class_names[int(cls)] if int(cls) < len(class_names) else "unknown"
-
-            # Apply specific threshold for plates
-            if class_name == 'plate' and conf < plate_conf_thres:
-                continue
             
             # Keep float values for JSON output, ensuring they are standard Python floats
             float_xyxy = [float(c) for c in xyxy]

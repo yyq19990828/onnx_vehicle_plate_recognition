@@ -25,5 +25,10 @@ def decode(character, text_index, text_prob=None, is_remove_duplicate=False):
         if len(conf_list) == 0:
             conf_list = [0]
         text = ''.join(char_list)
+        
+        # Post-processing: Replace '苏' with '京'
+        if text.startswith('苏'):
+            text = '京' + text[1:]
+            
         result_list.append((text, np.mean(conf_list).tolist(), conf_list))
     return result_list
