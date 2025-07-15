@@ -74,6 +74,7 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
             # Keep float values for JSON output
             float_xyxy = [float(c) for c in xyxy]
             x1, y1, x2, y2 = map(int, float_xyxy)
+            w, h = x2 - x1, y2 - y1
 
             plate_text, color_str, layer_str = "", "", ""
             plate_info = None
@@ -118,11 +119,13 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
             if class_name == 'plate':
                 output_data.append({
                     "plate_box2d": float_xyxy, "plate_name": plate_text,
-                    "plate_color": color_str, "plate_layer": layer_str
+                    "plate_color": color_str, "plate_layer": layer_str,
+                    "width": w, "height": h
                 })
             else:
                 output_data.append({
-                    "type": class_name, "box2d": float_xyxy, "color": "unknown"
+                    "type": class_name, "box2d": float_xyxy, "color": "unknown",
+                    "width": w, "height": h
                 })
 
     # 3. Prepare for drawing: Filter detections based on ROI for visualization
@@ -143,10 +146,17 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
             *xyxy, conf, cls = det
             class_name = class_names[int(cls)] if int(cls) < len(class_names) else "unknown"
             
-            # ROI only affects plates for drawing purposes
+            # ROI and width only affect plates for drawing purposes
             if class_name == 'plate':
-                y1 = xyxy[1]
+                x1, y1, x2, _ = xyxy
+                width = x2 - x1
+                
+                # Apply ROI filter
                 if y1 < roi_top_pixel:
+                    continue # Skip this plate for drawing
+                
+                # Apply width filter
+                if width <= 50:
                     continue # Skip this plate for drawing
 
             drawable_detections.append(det)

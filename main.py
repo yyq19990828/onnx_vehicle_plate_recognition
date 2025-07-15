@@ -119,12 +119,24 @@ def main(args):
         # Setup video writer if saving
         writer = None
         if args.output_mode == 'save':
+            # Create a directory for the video's output
+            video_name = os.path.splitext(os.path.basename(args.input))[0] if source_type == 'video' else 'camera_output'
+            video_output_dir = os.path.join(args.output_dir, video_name)
+            frames_dir = os.path.join(video_output_dir, 'frames')
+            json_dir = os.path.join(video_output_dir, 'json')
+
+            os.makedirs(video_output_dir, exist_ok=True)
+            if args.save_frame:
+                os.makedirs(frames_dir, exist_ok=True)
+            if args.save_json:
+                os.makedirs(json_dir, exist_ok=True)
+
             fps = int(cap.get(cv2.CAP_PROP_FPS))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             # Use the same name as the input file for the output video
             output_filename = os.path.basename(args.input) if source_type == 'video' else 'result.mp4'
-            output_video_path = os.path.join(args.output_dir, output_filename)
+            output_video_path = os.path.join(video_output_dir, output_filename)
 
             # Try to use a more efficient codec (H.264), with a fallback to mp4v
             fourcc_h264 = cv2.VideoWriter_fourcc(*'avc1')
@@ -161,11 +173,24 @@ def main(args):
                 break
 
             if frame_count % (args.frame_skip + 1) == 0:
+                # Save original frame if requested
+                if args.save_frame:
+                    frame_filename = f"{video_name}_{frame_count:06d}.jpg"
+                    frame_path = os.path.join(frames_dir, frame_filename)
+                    cv2.imwrite(frame_path, frame)
+
                 # Process frame
-                result_frame, _ = process_frame(
+                result_frame, output_data = process_frame(
                     frame, detector, color_layer_classifier, ocr_model, character, class_names, colors, args
                 )
                 last_result_frame = result_frame.copy()  # 保存检测结果
+
+                # Save JSON data if requested
+                if args.save_json:
+                    json_filename = f"{video_name}_{frame_count:06d}.json"
+                    json_path = os.path.join(json_dir, json_filename)
+                    with open(json_path, 'w', encoding='utf-8') as f:
+                        json.dump(output_data, f, ensure_ascii=False, indent=4)
             else:
                 # 如果跳帧，继续使用上一次的检测结果
                 if last_result_frame is not None:
@@ -215,6 +240,8 @@ if __name__ == '__main__':
     parser.add_argument('--ocr-model', type=str, default='models/ocr.onnx', help='Path to OCR ONNX model.')
     parser.add_argument('--ocr-dict-yaml', type=str, default='models/ocr_dict.yaml', help='Path to OCR dict YAML file.')
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help='Set the logging level.')
+    parser.add_argument('--save-frame', action='store_true', help='Save processed frames as images for video input.')
+    parser.add_argument('--save-json', action='store_true', help='Save JSON results for each processed frame for video input.')
     
     args = parser.parse_args()
     

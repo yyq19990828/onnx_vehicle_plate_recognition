@@ -75,6 +75,8 @@ graph TD
 -   `--color-layer-model`: 指向颜色和层分类 ONNX 模型的路径。 (默认: `models/color_layer.onnx`)
 -   `--ocr-model`: 指向车牌 OCR ONNX 模型的路径。 (默认: `models/ocr.onnx`)
 -   `--ocr-dict-yaml`: 指向 OCR 字符字典文件的路径。 (默认: `models/ocr_dict.yaml`)
+-   `--save-frame`: (仅视频) 激活此选项可将每个处理过的原始帧保存为图像文件。
+-   `--save-json`: (仅视频) 激活此选项可为每个处理过的帧保存一个包含检测结果的 JSON 文件。
 
 ### 示例
 
@@ -91,6 +93,11 @@ python main.py --model-path models/yolov8s_640.onnx --input /path/to/your/video.
 #### 使用摄像头进行实时识别
 ```bash
 python main.py --model-path models/yolov8s_640.onnx --input 0 --source-type camera --output-mode show
+```
+
+#### 处理视频并保存标注视频、原始帧和JSON文件
+```bash
+python main.py --model-path models/yolov8s_640.onnx --input /path/to/your/video.mp4 --source-type video --output-mode save --save-frame --save-json
 ```
 
 ## 模型说明
@@ -134,7 +141,9 @@ python main.py --model-path models/yolov8s_640.onnx --input 0 --source-type came
 
 1.  **`result.jpg`**: 标注了所有检测对象边界框的输入图像。对于车牌，会显示识别出的车牌号码、颜色和层数。
 2.  **`result.json`**: 一个 JSON 文件，包含每个检测目标的详细信息，包括：
-    -   `box`: 边界框的坐标。
+    -   `box`: 边界框的坐标 `[x1, y1, x2, y2]`。
+    -   `width`: 边界框的宽度。
+    -   `height`: 边界框的高度。
     -   `confidence`: 检测置信度分数。
     -   `class_name`: 检测到的类别名称（例如 'plate'）。
     -   `plate_text`: 识别出的车牌号码。
@@ -149,6 +158,8 @@ python main.py --model-path models/yolov8s_640.onnx --input 0 --source-type came
     "detections": [
         {
             "box": [420, 529, 509, 562],
+            "width": 89,
+            "height": 33,
             "confidence": 0.93,
             "class_id": 0,
             "class_name": "plate",
