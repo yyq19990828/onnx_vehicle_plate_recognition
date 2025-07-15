@@ -2,3 +2,4 @@ onnxruntime-gpu[cuda,cudnn]
 opencv-contrib-python
 numpy
 pyyaml
+colorlog

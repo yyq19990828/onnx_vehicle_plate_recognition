@@ -28,7 +28,7 @@ def infer_source_type(input_path):
 
 def main(args):
     # Setup logger
-    setup_logger(logging.getLevelName(args.log_level))
+    setup_logger(args.log_level)
 
     # Check output directory
     if not os.path.exists(args.output_dir):
@@ -73,7 +73,10 @@ def main(args):
 
     elif source_type == 'folder':
         image_files = [f for f in os.listdir(args.input) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff'))]
-        for image_file in image_files:
+        total_images = len(image_files)
+        logging.info(f"Found {total_images} images in folder '{args.input}'.")
+        for i, image_file in enumerate(image_files):
+            logging.info(f"Processing image {i + 1}/{total_images}: {image_file}")
             image_path = os.path.join(args.input, image_file)
             img = cv2.imread(image_path)
             if img is None:
@@ -87,17 +90,19 @@ def main(args):
             if args.output_mode == 'save':
                 output_image_path = os.path.join(args.output_dir, image_file)
                 cv2.imwrite(output_image_path, result_img)
-                logging.info(f"Result image saved to {output_image_path}")
+                # Log saving action, but the progress is already logged above
+                # logging.info(f"Result image saved to {output_image_path}")
 
                 output_json_path = os.path.join(args.output_dir, os.path.splitext(image_file)[0] + ".json")
                 with open(output_json_path, 'w', encoding='utf-8') as f:
                     json.dump(output_data, f, ensure_ascii=False, indent=4)
-                logging.info(f"JSON results saved to {output_json_path}")
+                # logging.info(f"JSON results saved to {output_json_path}")
             elif args.output_mode == 'show':
                 cv2.imshow(f"Result - {image_file}", result_img)
                 if cv2.waitKey(0) & 0xFF == ord('q'):
                     break # Allow quitting with 'q'
         cv2.destroyAllWindows()
+        logging.info(f"Finished processing all {total_images} images.")
 
 
     elif source_type in ['video', 'rtsp', 'camera']:
@@ -137,6 +142,17 @@ def main(args):
                 # Set writer to None to avoid crashing in the loop
                 writer = None
 
+        # Get total frame count for progress logging
+        try:
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        except:
+            total_frames = 0 # Use 0 to indicate unknown total
+
+        if total_frames > 0:
+            logging.info(f"Processing video with {total_frames} frames.")
+        else:
+            logging.info("Processing video stream (total frames unknown).")
+
         frame_count = 0
         last_result_frame = None  # 保存上一次的检测结果
         while cap.isOpened():
@@ -157,6 +173,13 @@ def main(args):
                 else:
                     result_frame = frame  # 如果还没有检测结果，使用原始帧
 
+            # Log progress every 100 frames
+            if frame_count > 0 and frame_count % 100 == 0:
+                if total_frames > 0:
+                    logging.info(f"Processed frame {frame_count}/{total_frames}...")
+                else:
+                    logging.info(f"Processed frame {frame_count}...")
+
             # Output
             if args.output_mode == 'save':
                 if writer:  # 添加安全检查
@@ -167,6 +190,8 @@ def main(args):
                     break
             
             frame_count += 1
+        
+        logging.info("Finished processing video.")
         
         # Release resources
         cap.release()
@@ -193,9 +218,6 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    # Setup logger early to catch messages during setup
-    setup_logger(logging.getLevelName(args.log_level))
-
     # Create a dummy model file if it doesn't exist, as we don't have a real one yet.
     if not os.path.exists(args.model_path):
         logging.warning(f"Model file not found at {args.model_path}. A real model is needed for inference.")
