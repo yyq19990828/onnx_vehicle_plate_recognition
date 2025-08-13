@@ -48,6 +48,14 @@ def bbox_iou(box1: np.ndarray, box2: np.ndarray, eps: float = 1e-7) -> np.ndarra
     return inter_area / (union_area + eps)
 
 
+def smooth(y: np.ndarray, f: float = 0.05) -> np.ndarray:
+    """Box filter of fraction f."""
+    nf = round(len(y) * f * 2) // 2 + 1  # number of filter elements (must be odd)
+    p = np.ones(nf // 2)  # ones padding
+    yp = np.concatenate((p * y[0], y, p * y[-1]), 0)  # y padded
+    return np.convolve(yp, np.ones(nf) / nf, mode="valid")  # y-smoothed
+
+
 def compute_ap(recall: np.ndarray, precision: np.ndarray) -> float:
     """
     计算平均精度 (AP)
@@ -137,24 +145,25 @@ def ap_per_class(
         for j in range(tp.shape[1]):
             ap[ci, j] = compute_ap(recall[:, j], precision[:, j])
 
-        # 保存精度-召回率曲线 (用于绘图)
-        px = np.linspace(0, 1, 1000)  # 插值点
-        py = np.interp(px, recall[:, 0], precision[:, 0])  # 使用IoU=0.5
-        rx = np.interp(px, np.arange(len(recall[:, 0])), recall[:, 0])  # 插值召回率
-        p[ci] = py
-        r[ci] = rx
+        # 保存精度-召回率曲线 (用于绘图，按照Ultralytics方式)
+        x = np.linspace(0, 1, 1000)
+        # 使用负值插值，因为置信度是降序排列的
+        r_interp = np.interp(-x, -conf[i], recall[:, 0], left=0)  # 召回率插值
+        p_interp = np.interp(-x, -conf[i], precision[:, 0], left=1)  # 精度插值
+        p[ci] = p_interp
+        r[ci] = r_interp
         
-        # 保存最终的精度和召回率（用于打印）
-        if len(precision) > 0 and len(recall) > 0:
-            # 取最高置信度时的精度和召回率
-            final_precision[ci] = float(precision[-1, 0]) if precision.ndim > 1 else float(precision[-1])
-            final_recall[ci] = float(recall[-1, 0]) if recall.ndim > 1 else float(recall[-1])
-        else:
-            final_precision[ci] = 0.0
-            final_recall[ci] = 0.0
-
     # 计算F1分数
     f1 = 2 * p * r / (p + r + eps)
+    
+    # 按照Ultralytics方式，找到最大F1对应的置信度阈值
+    f1_mean = f1.mean(0) if len(f1) > 0 else np.zeros(1000)  # 所有类别的平均F1曲线
+    f1_smoothed = smooth(f1_mean, 0.1)  # 平滑F1曲线
+    max_f1_idx = f1_smoothed.argmax()  # 最大F1对应的索引
+    
+    # 提取最大F1时的精度、召回率
+    final_precision = p[:, max_f1_idx] if len(p) > 0 else np.zeros(nc)
+    final_recall = r[:, max_f1_idx] if len(r) > 0 else np.zeros(nc)
 
     return ap, p, r, f1, final_precision, final_recall
 
