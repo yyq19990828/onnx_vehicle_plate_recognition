@@ -295,22 +295,27 @@ def load_yolo_labels(label_path: str, img_width: int, img_height: int) -> np.nda
     
     labels = []
     with open(label_path, 'r') as f:
-        for line in f.readlines():
+        for line_num, line in enumerate(f.readlines(), 1):
             parts = line.strip().split()
             if len(parts) >= 5:
-                class_id = int(parts[0])
-                x_center = float(parts[1]) * img_width
-                y_center = float(parts[2]) * img_height
-                width = float(parts[3]) * img_width
-                height = float(parts[4]) * img_height
-                
-                # 转换为xyxy格式
-                x1 = x_center - width / 2
-                y1 = y_center - height / 2
-                x2 = x_center + width / 2
-                y2 = y_center + height / 2
-                
-                labels.append([class_id, x1, y1, x2, y2])
+                try:
+                    class_id = int(parts[0])
+                    x_center = float(parts[1]) * img_width
+                    y_center = float(parts[2]) * img_height
+                    width = float(parts[3]) * img_width
+                    height = float(parts[4]) * img_height
+                    
+                    # 转换为xyxy格式
+                    x1 = x_center - width / 2
+                    y1 = y_center - height / 2
+                    x2 = x_center + width / 2
+                    y2 = y_center + height / 2
+                    
+                    labels.append([class_id, x1, y1, x2, y2])
+                except ValueError as e:
+                    # print(f"警告: 跳过标签文件 {label_path} 第 {line_num} 行，遇到无效字符: {parts[0]} - {e}")
+                    logging.warning(f"跳过标签文件 {label_path} 第 {line_num} 行，遇到无效字符: {parts[0]}")
+                    continue
     
     return np.array(labels) if labels else np.zeros((0, 5))
 

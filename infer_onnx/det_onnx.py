@@ -56,12 +56,13 @@ class DetONNX:
             self.input_shape = input_shape
             logging.info(f"模型输入形状为动态 {model_input_shape}，使用默认形状: {self.input_shape}")
 
-    def __call__(self, image: np.ndarray) -> Tuple[List[np.ndarray], tuple]:
+    def __call__(self, image: np.ndarray, conf_thres: Optional[float] = None) -> Tuple[List[np.ndarray], tuple]:
         """
         Performs inference on a single image.
 
         Args:
             image (np.ndarray): The input image in BGR format.
+            conf_thres (Optional[float]): Confidence threshold, if None uses self.conf_thres
 
         Returns:
             Tuple[List[np.ndarray], tuple]: A tuple containing the list of detections and the original image shape.
@@ -85,11 +86,15 @@ class DetONNX:
         prediction[..., 2] *= self.input_shape[1]  # width
         prediction[..., 3] *= self.input_shape[0]  # height
 
+        # 使用传入的置信度阈值，如果没有则使用默认值
+        effective_conf_thres = conf_thres if conf_thres is not None else self.conf_thres
+        effective_iou_thres = self.iou_thres  # IoU阈值保持不变
+        
         # Post-process the prediction with NMS
         detections = non_max_suppression(
             prediction,
-            conf_thres=self.conf_thres,
-            iou_thres=self.iou_thres
+            conf_thres=effective_conf_thres,
+            iou_thres=effective_iou_thres
         )
 
         # Scale boxes back to original image size
@@ -173,9 +178,9 @@ class DetONNX:
         predictions = []
         ground_truths = []
         
-        # 加载类别名称（如果存在data.yaml）
+        # 加载类别名称（如果存在classes.yaml）
         names = {}
-        data_yaml = dataset_path / "data.yaml"
+        data_yaml = dataset_path / "classes.yaml"
         if data_yaml.exists():
             with open(data_yaml, 'r', encoding='utf-8') as f:
                 data_config = yaml.safe_load(f)
@@ -195,18 +200,16 @@ class DetONNX:
             
             img_height, img_width = image.shape[:2]
             
-            # 进行检测
-            detections, original_shape = self(image)
+            # 进行检测，传递置信度阈值
+            detections, original_shape = self(image, conf_thres=conf_threshold)
             
             # 应用输出转换（如果提供）
             if output_transform is not None:
                 detections = output_transform(detections, original_shape)
             
-            # 处理检测结果
+            # 处理检测结果（已经在__call__中进行了置信度过滤）
             if detections and len(detections[0]) > 0:
                 pred = detections[0]
-                # 过滤低置信度检测
-                pred = pred[pred[:, 4] >= conf_threshold]
             else:
                 pred = np.zeros((0, 6))
             
@@ -262,12 +265,13 @@ class RFDETROnnx(DetONNX):
         if self.pred_boxes_name not in actual_output_names or self.pred_logits_name not in actual_output_names:
             logging.warning(f"期望的输出名称 {[self.pred_boxes_name, self.pred_logits_name]} 与实际输出 {actual_output_names} 不匹配")
 
-    def __call__(self, image: np.ndarray) -> Tuple[List[np.ndarray], tuple]:
+    def __call__(self, image: np.ndarray, conf_thres: Optional[float] = None) -> Tuple[List[np.ndarray], tuple]:
         """
         使用RF-DETR模型进行推理。
         
         Args:
             image (np.ndarray): 输入图像，BGR格式
+            conf_thres (Optional[float]): 置信度阈值，如果为None则使用self.conf_thres
             
         Returns:
             Tuple[List[np.ndarray], tuple]: 检测结果列表和原始图像形状
@@ -292,8 +296,11 @@ class RFDETROnnx(DetONNX):
         max_scores = np.max(scores, axis=-1)
         class_ids = np.argmax(scores, axis=-1)
         
+        # 使用传入的置信度阈值，如果没有则使用默认值
+        effective_conf_thres = conf_thres if conf_thres is not None else self.conf_thres
+        
         # 过滤低置信度检测
-        valid_mask = max_scores > self.conf_thres
+        valid_mask = max_scores > effective_conf_thres
         if not np.any(valid_mask):
             return [[]], original_shape
         
