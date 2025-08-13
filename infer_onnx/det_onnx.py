@@ -304,7 +304,7 @@ class RFDETROnnx(DetONNX):
     
     def _preprocess_rfdetr(self, image: np.ndarray) -> tuple:
         """
-        RF-DETR专用的预处理函数
+        RF-DETR专用的预处理函数，匹配原始RF-DETR的SquareResize + ImageNet标准化
         
         Args:
             image: 输入图像 (BGR格式)
@@ -316,61 +316,59 @@ class RFDETROnnx(DetONNX):
         h, w = original_shape
         target_size = self.input_shape[0]  # 假设是正方形输入
         
-        # 计算缩放比例，保持长宽比
-        scale = target_size / max(h, w)
+        # 使用直接方形缩放（SquareResize），不保持长宽比，匹配原始RF-DETR
+        resized = cv2.resize(image, (target_size, target_size), interpolation=cv2.INTER_LINEAR)
         
-        # 计算新的尺寸
-        new_h = int(h * scale)
-        new_w = int(w * scale)
-        
-        # 缩放图像
-        resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-        
-        # 创建目标尺寸的画布，使用padding填充
-        canvas = np.full((target_size, target_size, 3), 114, dtype=np.uint8)
-        
-        # 计算居中放置的位置
-        y_offset = (target_size - new_h) // 2
-        x_offset = (target_size - new_w) // 2
-        
-        # 将缩放后的图像放置到画布上
-        canvas[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized
-        
-        # 转换为RGB（RF-DETR通常需要RGB输入）
-        canvas_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+        # 转换为RGB（RF-DETR需要RGB输入）
+        resized_rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
         
         # 归一化到[0,1]
-        canvas_float = canvas_rgb.astype(np.float32) / 255.0
+        resized_float = resized_rgb.astype(np.float32) / 255.0
+        
+        # 应用ImageNet标准化，匹配原始RF-DETR训练时的标准化参数
+        # mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+        std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+        
+        normalized = (resized_float - mean) / std
         
         # 转换为CHW格式并添加batch维度
-        tensor = np.transpose(canvas_float, (2, 0, 1))[None, ...]
+        tensor = np.transpose(normalized, (2, 0, 1))[None, ...]
         
-        return tensor, scale, original_shape, (x_offset, y_offset)
+        # 对于直接方形缩放，计算每个维度的缩放因子
+        scale_h = target_size / h
+        scale_w = target_size / w
+        scale = (scale_h, scale_w)  # 返回元组而不是单一值
+        
+        # 没有偏移量，因为是直接缩放
+        offset = (0, 0)
+        
+        return tensor, scale, original_shape, offset
     
     def _postprocess_rfdetr(
         self, 
         pred_boxes: np.ndarray, 
         pred_logits: np.ndarray,
-        scale: float,
+        scale: tuple,
         original_shape: tuple,
         offset: tuple,
         conf_threshold: float
     ) -> np.ndarray:
         """
-        RF-DETR专用的后处理函数
+        RF-DETR专用的后处理函数，适配直接方形缩放的坐标转换
         
         Args:
             pred_boxes: 预测的边界框 (num_queries, 4) - 归一化的 [cx, cy, w, h]
             pred_logits: 预测的logits (num_queries, num_classes)
-            scale: 预处理时的缩放因子
+            scale: 预处理时的缩放因子 (scale_h, scale_w)
             original_shape: 原始图像形状 (H, W)
-            offset: 预处理时的偏移量 (x_offset, y_offset)
+            offset: 预处理时的偏移量 (x_offset, y_offset) - 直接缩放时为(0,0)
             conf_threshold: 置信度阈值
         
         Returns:
             检测结果 (N, 6) - [x1, y1, x2, y2, conf, class]
         """
-        x_offset, y_offset = offset
+        scale_h, scale_w = scale
         target_size = self.input_shape[0]
         
         # 应用sigmoid激活
@@ -401,17 +399,12 @@ class RFDETROnnx(DetONNX):
         x2 = cx + w / 2
         y2 = cy + h / 2
         
-        # 考虑偏移，转换为缩放后图像的坐标
-        x1 -= x_offset
-        y1 -= y_offset
-        x2 -= x_offset
-        y2 -= y_offset
-        
-        # 转换回原始图像坐标
-        x1 /= scale
-        y1 /= scale
-        x2 /= scale
-        y2 /= scale
+        # 对于直接缩放，直接转换回原始图像坐标
+        # 使用不同的缩放因子处理x和y坐标
+        x1 /= scale_w
+        y1 /= scale_h
+        x2 /= scale_w
+        y2 /= scale_h
         
         # 裁剪到原始图像边界
         h_orig, w_orig = original_shape
