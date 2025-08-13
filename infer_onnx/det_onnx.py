@@ -55,13 +55,14 @@ class DetONNX:
             self.input_shape = input_shape
             logging.info(f"模型输入形状为动态 {model_input_shape}，使用默认形状: {self.input_shape}")
 
-    def __call__(self, image: np.ndarray, conf_thres: Optional[float] = None) -> Tuple[List[np.ndarray], tuple]:
+    def __call__(self, image: np.ndarray, conf_thres: Optional[float] = None, iou_thres: Optional[float] = None) -> Tuple[List[np.ndarray], tuple]:
         """
         Performs inference on a single image.
 
         Args:
             image (np.ndarray): The input image in BGR format.
             conf_thres (Optional[float]): Confidence threshold, if None uses self.conf_thres
+            iou_thres (Optional[float]): IoU threshold for NMS, if None uses self.iou_thres
 
         Returns:
             Tuple[List[np.ndarray], tuple]: A tuple containing the list of detections and the original image shape.
@@ -85,9 +86,9 @@ class DetONNX:
         prediction[..., 2] *= self.input_shape[1]  # width
         prediction[..., 3] *= self.input_shape[0]  # height
 
-        # 使用传入的置信度阈值，如果没有则使用默认值
+        # 使用传入的置信度阈值和IoU阈值，如果没有则使用默认值
         effective_conf_thres = conf_thres if conf_thres is not None else self.conf_thres
-        effective_iou_thres = self.iou_thres  # IoU阈值保持不变
+        effective_iou_thres = iou_thres if iou_thres is not None else self.iou_thres
         
         # Post-process the prediction with NMS
         detections = non_max_suppression(
@@ -107,6 +108,7 @@ class DetONNX:
         dataset_path: str,
         output_transform: Optional[Callable] = None,
         conf_threshold: float = 0.001,
+        iou_threshold: float = 0.7,
         max_images: Optional[int] = None
     ) -> Dict[str, Any]:
         """
@@ -117,6 +119,7 @@ class DetONNX:
             output_transform (Optional[Callable]): 输出转换函数，将模型输出转换为YOLO格式
                                                  函数签名: (detections, original_shape) -> detections
             conf_threshold (float): 置信度阈值，低于此阈值的检测将被过滤
+            iou_threshold (float): IoU阈值，默认为0.7
             max_images (Optional[int]): 最大评估图像数量，None表示评估所有图像
             
         Returns:
@@ -214,8 +217,8 @@ class DetONNX:
             
             # 测量预处理时间
             preprocess_start = time.time()
-            # 进行检测，传递置信度阈值
-            detections, original_shape = self(image, conf_thres=conf_threshold)
+            # 进行检测，传递置信度阈值和IoU阈值
+            detections, original_shape = self(image, conf_thres=conf_threshold, iou_thres=iou_threshold)
             inference_end = time.time()
             
             # 应用输出转换（如果提供）
@@ -294,13 +297,14 @@ class RFDETROnnx(DetONNX):
         if self.pred_boxes_name not in actual_output_names or self.pred_logits_name not in actual_output_names:
             logging.warning(f"期望的输出名称 {[self.pred_boxes_name, self.pred_logits_name]} 与实际输出 {actual_output_names} 不匹配")
 
-    def __call__(self, image: np.ndarray, conf_thres: Optional[float] = None) -> Tuple[List[np.ndarray], tuple]:
+    def __call__(self, image: np.ndarray, conf_thres: Optional[float] = None, iou_thres: Optional[float] = None) -> Tuple[List[np.ndarray], tuple]:
         """
         使用RF-DETR模型进行推理。
         
         Args:
             image (np.ndarray): 输入图像，BGR格式
             conf_thres (Optional[float]): 置信度阈值，如果为None则使用self.conf_thres
+            iou_thres (Optional[float]): IoU阈值，RF-DETR通常不需要额外的NMS，但保留参数以保持一致性
             
         Returns:
             Tuple[List[np.ndarray], tuple]: 检测结果列表和原始图像形状
