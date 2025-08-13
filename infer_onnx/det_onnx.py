@@ -187,11 +187,26 @@ class DetONNX:
                 if isinstance(names, list):
                     names = {i: name for i, name in enumerate(names)}
         
+        # 性能统计
+        import time
+        times = {
+            'preprocess': [],
+            'inference': [],
+            'postprocess': []
+        }
+        
+        # 创建进度条效果（简单版本）
+        total_files = len(image_files)
+        print(f"\n评估 {total_files} 张图像...")
+        print("Progress: [", end="", flush=True)
+        
         for i, image_file in enumerate(image_files):
-            if i % 100 == 0:
-                logging.info(f"处理进度: {i}/{len(image_files)}")
+            # 简单的进度条显示
+            if i % max(1, total_files // 50) == 0:
+                print("█", end="", flush=True)
             
             # 读取图像
+            start_time = time.time()
             image = cv2.imread(str(image_file))
             if image is None:
                 logging.warning(f"无法读取图像: {image_file}")
@@ -199,12 +214,22 @@ class DetONNX:
             
             img_height, img_width = image.shape[:2]
             
+            # 测量预处理时间
+            preprocess_start = time.time()
             # 进行检测，传递置信度阈值
             detections, original_shape = self(image, conf_thres=conf_threshold)
+            inference_end = time.time()
             
             # 应用输出转换（如果提供）
             if output_transform is not None:
                 detections = output_transform(detections, original_shape)
+            
+            postprocess_end = time.time()
+            
+            # 记录时间
+            times['preprocess'].append((preprocess_start - start_time) * 1000)
+            times['inference'].append((inference_end - preprocess_start) * 1000)
+            times['postprocess'].append((postprocess_end - inference_end) * 1000)
             
             # 处理检测结果（已经在__call__中进行了置信度过滤）
             if detections and len(detections[0]) > 0:
@@ -219,8 +244,17 @@ class DetONNX:
             gt = load_yolo_labels(str(label_file), img_width, img_height)
             ground_truths.append(gt)
         
+        print(f"] 100% ({total_files}/{total_files})")
+        
         # 计算指标
         results = evaluate_detection(predictions, ground_truths, names)
+        
+        # 添加性能统计
+        if times['preprocess']:
+            results['speed_preprocess'] = np.mean(times['preprocess'])
+            results['speed_inference'] = np.mean(times['inference']) 
+            results['speed_loss'] = 0.0  # 评估时没有损失计算
+            results['speed_postprocess'] = np.mean(times['postprocess'])
         
         # 打印结果
         print_metrics(results, names)

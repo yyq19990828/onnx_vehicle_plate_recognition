@@ -213,7 +213,12 @@ class DetectionMetrics:
         }
         self.iou_thresholds = np.linspace(0.5, 0.95, 10)  # IoU阈值 0.5:0.05:0.95
         
-    def update_stats(self, tp: np.ndarray, conf: np.ndarray, pred_cls: np.ndarray, target_cls: np.ndarray):
+        # 额外统计信息
+        self.class_stats = {}  # 每个类别的统计信息
+        self.total_images = 0
+        self.total_instances = 0
+        
+    def update_stats(self, tp: np.ndarray, conf: np.ndarray, pred_cls: np.ndarray, target_cls: np.ndarray, gt_boxes: np.ndarray = None):
         """
         更新统计信息
         
@@ -222,11 +227,50 @@ class DetectionMetrics:
             conf (np.ndarray): 置信度数组  
             pred_cls (np.ndarray): 预测类别数组
             target_cls (np.ndarray): 真实类别数组
+            gt_boxes (np.ndarray, optional): 真实标签框，用于计算尺寸统计
         """
         self.stats['tp'].append(tp)
         self.stats['conf'].append(conf)
         self.stats['pred_cls'].append(pred_cls)
         self.stats['target_cls'].append(target_cls)
+        
+        # 更新图像和实例计数
+        self.total_images += 1
+        if len(target_cls) > 0:
+            self.total_instances += len(target_cls)
+            
+            # 统计每个类别的信息
+            unique_classes = np.unique(target_cls)
+            for cls in unique_classes:
+                cls_int = int(cls)
+                if cls_int not in self.class_stats:
+                    self.class_stats[cls_int] = {
+                        'images': set(),
+                        'instances': 0,
+                        'boxes_small': 0,
+                        'boxes_medium': 0, 
+                        'boxes_large': 0
+                    }
+                
+                self.class_stats[cls_int]['images'].add(self.total_images - 1)
+                cls_mask = target_cls == cls
+                self.class_stats[cls_int]['instances'] += np.sum(cls_mask)
+                
+                # 如果有边界框信息，计算尺寸分布
+                if gt_boxes is not None and len(gt_boxes) > 0:
+                    cls_boxes = gt_boxes[cls_mask]
+                    if len(cls_boxes) > 0:
+                        # 计算面积 (x2-x1) * (y2-y1)
+                        areas = (cls_boxes[:, 3] - cls_boxes[:, 1]) * (cls_boxes[:, 4] - cls_boxes[:, 2])
+                        
+                        # COCO标准的尺寸划分：small < 32²，medium < 96²，large >= 96²
+                        small_mask = areas < 32*32
+                        medium_mask = (areas >= 32*32) & (areas < 96*96)
+                        large_mask = areas >= 96*96
+                        
+                        self.class_stats[cls_int]['boxes_small'] += np.sum(small_mask)
+                        self.class_stats[cls_int]['boxes_medium'] += np.sum(medium_mask)
+                        self.class_stats[cls_int]['boxes_large'] += np.sum(large_mask)
     
     def process(self) -> Dict[str, Any]:
         """
@@ -258,9 +302,32 @@ class DetectionMetrics:
             stats['target_cls']
         )
         
+        # 获取唯一类别
+        unique_classes = np.unique(np.concatenate(self.stats['target_cls'])) if self.stats['target_cls'] else []
+        
         # 计算mAP
         ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
         mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
+        
+        # 构建每个类别的详细统计
+        class_images = {}
+        class_instances = {}
+        class_precision = {}
+        class_recall = {}
+        
+        for i, cls in enumerate(unique_classes):
+            cls_int = int(cls)
+            if cls_int in self.class_stats:
+                class_images[cls_int] = len(self.class_stats[cls_int]['images'])
+                class_instances[cls_int] = self.class_stats[cls_int]['instances']
+                
+                # 使用计算出的精度和召回率
+                if i < len(p) and len(p[i]) > 0:
+                    class_precision[cls_int] = p[i].mean()
+                    class_recall[cls_int] = r[i].mean()
+                else:
+                    class_precision[cls_int] = 0.0
+                    class_recall[cls_int] = 0.0
         
         # 构建结果字典
         results = {
@@ -273,7 +340,26 @@ class DetectionMetrics:
             'p': p,               # 精度曲线
             'r': r,               # 召回率曲线
             'f1': f1,             # F1分数
+            
+            # 额外的统计信息
+            'total_images': self.total_images,
+            'total_instances': self.total_instances,
+            'class_images': class_images,
+            'class_instances': class_instances,
+            'class_precision': class_precision,
+            'class_recall': class_recall,
         }
+        
+        # 计算按尺寸划分的指标（如果有尺寸信息）
+        if any('boxes_small' in stats for stats in self.class_stats.values()):
+            # 这里可以添加按尺寸计算AP的逻辑
+            # 暂时作为占位符
+            results['map50_small'] = 0.0
+            results['map_small'] = 0.0
+            results['map50_medium'] = 0.0
+            results['map_medium'] = 0.0
+            results['map50_large'] = 0.0
+            results['map_large'] = 0.0
         
         return results
 
@@ -362,12 +448,12 @@ def evaluate_detection(
         if len(gt) == 0:
             # 没有真实标签，所有预测都是假正例
             tp = np.zeros((len(pred), len(iou_thresholds)), dtype=bool)
-            metrics.update_stats(tp, pred[:, 4], pred[:, 5], np.array([]))
+            metrics.update_stats(tp, pred[:, 4], pred[:, 5], np.array([]), None)
             continue
         
         # 处理有预测和标签的情况
         tp = process_batch(pred, gt, iou_thresholds)
-        metrics.update_stats(tp, pred[:, 4], pred[:, 5], gt[:, 0])
+        metrics.update_stats(tp, pred[:, 4], pred[:, 5], gt[:, 0], gt)
     
     results = metrics.process()
     
@@ -383,7 +469,7 @@ def evaluate_detection(
 
 def print_metrics(results: Dict[str, Any], names: Dict[int, str] = None):
     """
-    打印指标结果
+    以Ultralytics风格打印指标结果
     
     Args:
         results (Dict[str, Any]): 评估结果
@@ -393,35 +479,71 @@ def print_metrics(results: Dict[str, Any], names: Dict[int, str] = None):
         print("无有效检测结果")
         return
     
-    print(f"\n{'类别':<15} {'AP@0.5':<10} {'AP@0.5:0.95':<12}")
-    print("-" * 40)
+    # 获取统计信息
+    total_images = results.get('total_images', 0)
+    total_instances = results.get('total_instances', 0)
+    
+    print(f"\n                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95):")
     
     # 打印每个类别的结果
     if 'ap50' in results and 'ap' in results:
-        # 获取有计算结果的类别和所有真实标签中的类别
         computed_classes = results.get('classes', [])
         all_gt_classes = results.get('all_gt_classes', computed_classes)
-        
-        # 创建一个从类别索引到结果数组索引的映射
         class_to_idx = {cls: i for i, cls in enumerate(computed_classes)}
+        
+        # 获取每个类别的图像数和实例数
+        class_images = results.get('class_images', {})
+        class_instances = results.get('class_instances', {})
+        class_precision = results.get('class_precision', {})
+        class_recall = results.get('class_recall', {})
         
         # 按类别索引排序显示
         for class_id in sorted(all_gt_classes):
-            class_name = names.get(class_id, f"class_{class_id}") if names else f"class_{class_id}"
+            class_name = names.get(class_id, f"class{class_id}") if names else f"class{class_id}"
+            
+            # 限制类别名称长度
+            if len(class_name) > 16:
+                class_name = class_name[:13] + "..."
             
             if class_id in class_to_idx:
-                # 有计算结果的类别
                 idx = class_to_idx[class_id]
                 ap50 = results['ap50'][idx]
                 ap = results['ap'][idx]
-                print(f"{class_name:<15} {ap50:<10.3f} {ap:<12.3f}")
+                precision = class_precision.get(class_id, 0)
+                recall = class_recall.get(class_id, 0)
+                images = class_images.get(class_id, 0)
+                instances = class_instances.get(class_id, 0)
+                
+                print(f"               {class_name:>12s}      {images:4d}      {instances:4d}      {precision:.3f}      {recall:.3f}      {ap50:.3f}      {ap:.3f}")
             else:
-                # 没有计算结果的类别（AP为0）
-                print(f"{class_name:<15} {0.0:<10.3f} {0.0:<12.3f}")
+                # 没有预测结果的类别
+                images = class_images.get(class_id, 0)
+                instances = class_instances.get(class_id, 0)
+                print(f"               {class_name:>12s}      {images:4d}      {instances:4d}          0          0          0          0")
     
-    print("-" * 40)
-    print(f"{'总体指标':<15}")
-    print(f"mAP@0.5      : {results.get('map50', 0):.3f}")
-    print(f"mAP@0.5:0.95 : {results.get('map', 0):.3f}")
-    print(f"精度 (P)     : {results.get('mp', 0):.3f}")
-    print(f"召回率 (R)   : {results.get('mr', 0):.3f}")
+    # 打印总体指标
+    map50 = results.get('map50', 0)
+    map50_95 = results.get('map', 0)
+    mp = results.get('mp', 0)
+    mr = results.get('mr', 0)
+    
+    print(f"                   all      {total_images:4d}     {total_instances:5d}      {mp:.3f}      {mr:.3f}      {map50:.3f}      {map50_95:.3f}")
+    
+    # 添加按尺寸划分的指标（如果可用）
+    if 'map50_small' in results or 'map50_medium' in results or 'map50_large' in results:
+        print(f"\n                             mAP50   mAP50-95")
+        if 'map50_small' in results:
+            print(f"               small:      {results.get('map50_small', 0):.3f}      {results.get('map_small', 0):.3f}")
+        if 'map50_medium' in results:
+            print(f"               medium:     {results.get('map50_medium', 0):.3f}      {results.get('map_medium', 0):.3f}")
+        if 'map50_large' in results:
+            print(f"               large:      {results.get('map50_large', 0):.3f}      {results.get('map_large', 0):.3f}")
+    
+    # 打印速度统计（如果可用）
+    if 'speed_preprocess' in results:
+        speed_preprocess = results.get('speed_preprocess', 0)
+        speed_inference = results.get('speed_inference', 0) 
+        speed_loss = results.get('speed_loss', 0)
+        speed_postprocess = results.get('speed_postprocess', 0)
+        
+        print(f"Speed: {speed_preprocess:.1f}ms preprocess, {speed_inference:.1f}ms inference, {speed_loss:.1f}ms loss, {speed_postprocess:.1f}ms postprocess per image")
