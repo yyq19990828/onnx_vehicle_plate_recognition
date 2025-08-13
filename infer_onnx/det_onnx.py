@@ -352,10 +352,11 @@ class RFDETROnnx(DetONNX):
         scale: tuple,
         original_shape: tuple,
         offset: tuple,
-        conf_threshold: float
+        conf_threshold: float,
+        num_select: int = 300
     ) -> np.ndarray:
         """
-        RF-DETR专用的后处理函数，适配直接方形缩放的坐标转换
+        RF-DETR专用的后处理函数，匹配原始RF-DETR的TopK选择机制
         
         Args:
             pred_boxes: 预测的边界框 (num_queries, 4) - 归一化的 [cx, cy, w, h]
@@ -364,6 +365,7 @@ class RFDETROnnx(DetONNX):
             original_shape: 原始图像形状 (H, W)
             offset: 预处理时的偏移量 (x_offset, y_offset) - 直接缩放时为(0,0)
             conf_threshold: 置信度阈值
+            num_select: TopK选择的数量，匹配RF-DETR的num_select=300
         
         Returns:
             检测结果 (N, 6) - [x1, y1, x2, y2, conf, class]
@@ -374,24 +376,39 @@ class RFDETROnnx(DetONNX):
         # 应用sigmoid激活
         scores = 1 / (1 + np.exp(-pred_logits))
         
-        # 获取最大得分和对应的类别
-        max_scores = np.max(scores, axis=1)
-        class_ids = np.argmax(scores, axis=1)
+        # 实现RF-DETR的TopK选择机制
+        # 将scores展平为(num_queries * num_classes,)
+        scores_flat = scores.reshape(-1)
+        num_queries, num_classes = scores.shape
+        
+        # 选择前num_select个最高得分
+        num_select = min(num_select, len(scores_flat))
+        topk_indices = np.argpartition(scores_flat, -num_select)[-num_select:]
+        topk_values = scores_flat[topk_indices]
         
         # 过滤低置信度检测
-        valid_mask = max_scores > conf_threshold
+        valid_mask = topk_values > conf_threshold
         if not np.any(valid_mask):
             return np.zeros((0, 6))
         
-        pred_boxes = pred_boxes[valid_mask]
-        max_scores = max_scores[valid_mask]
-        class_ids = class_ids[valid_mask]
+        # 应用有效性掩码
+        topk_indices = topk_indices[valid_mask]
+        topk_values = topk_values[valid_mask]
+        
+        # 将平坦索引转换回(query_idx, class_idx)
+        topk_boxes_idx = topk_indices // num_classes  # 查询索引
+        class_ids = topk_indices % num_classes         # 类别索引
+        
+        # 获取对应的边界框
+        selected_boxes = pred_boxes[topk_boxes_idx]
+        selected_scores = topk_values
+        selected_classes = class_ids
         
         # 转换归一化坐标到像素坐标（相对于target_size）
-        cx = pred_boxes[:, 0] * target_size
-        cy = pred_boxes[:, 1] * target_size
-        w = pred_boxes[:, 2] * target_size
-        h = pred_boxes[:, 3] * target_size
+        cx = selected_boxes[:, 0] * target_size
+        cy = selected_boxes[:, 1] * target_size
+        w = selected_boxes[:, 2] * target_size
+        h = selected_boxes[:, 3] * target_size
         
         # 转换为x1,y1,x2,y2格式（相对于target_size）
         x1 = cx - w / 2
@@ -414,6 +431,6 @@ class RFDETROnnx(DetONNX):
         y2 = np.clip(y2, 0, h_orig)
         
         # 组合检测结果
-        detections = np.column_stack([x1, y1, x2, y2, max_scores, class_ids])
+        detections = np.column_stack([x1, y1, x2, y2, selected_scores, selected_classes])
         
         return detections
