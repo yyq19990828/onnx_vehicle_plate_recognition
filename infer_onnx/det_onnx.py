@@ -197,13 +197,11 @@ class DetONNX:
         
         # 创建进度条效果（简单版本）
         total_files = len(image_files)
-        print(f"\n评估 {total_files} 张图像...")
-        print("Progress: [", end="", flush=True)
-        
+        logging.info(f"评估 {total_files} 张图像...")
+
         for i, image_file in enumerate(image_files):
-            # 简单的进度条显示
-            if i % max(1, total_files // 50) == 0:
-                print("█", end="", flush=True)
+            if i % 100 == 0:
+                logging.info(f"处理进度: {i}/{len(image_files)}")
             
             # 读取图像
             start_time = time.time()
@@ -243,8 +241,6 @@ class DetONNX:
             label_file = labels_dir / f"{image_file.stem}.txt"
             gt = load_yolo_labels(str(label_file), img_width, img_height)
             ground_truths.append(gt)
-        
-        print(f"] 100% ({total_files}/{total_files})")
         
         # 计算指标
         results = evaluate_detection(predictions, ground_truths, names)
