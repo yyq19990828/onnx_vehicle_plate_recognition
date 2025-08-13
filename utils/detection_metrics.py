@@ -339,6 +339,13 @@ def evaluate_detection(
     metrics = DetectionMetrics(names)
     iou_thresholds = np.linspace(0.5, 0.95, 10)
     
+    # 收集所有在真实标签中出现的类别
+    all_gt_classes = set()
+    for gt in ground_truths:
+        if len(gt) > 0:
+            all_gt_classes.update(gt[:, 0].astype(int))
+    all_gt_classes = sorted(list(all_gt_classes))
+    
     # 处理每个图像的预测和标签
     for pred, gt in zip(predictions, ground_truths):
         if len(pred) == 0:
@@ -362,7 +369,16 @@ def evaluate_detection(
         tp = process_batch(pred, gt, iou_thresholds)
         metrics.update_stats(tp, pred[:, 4], pred[:, 5], gt[:, 0])
     
-    return metrics.process()
+    results = metrics.process()
+    
+    # 添加类别信息，确保包含所有在真实标签中出现的类别
+    if results and 'ap50' in results:
+        # 获取当前计算出的类别
+        unique_classes, _ = np.unique(np.concatenate(metrics.stats['target_cls']) if metrics.stats['target_cls'] else [], return_counts=True)
+        results['classes'] = unique_classes.astype(int).tolist()
+        results['all_gt_classes'] = all_gt_classes
+    
+    return results
 
 
 def print_metrics(results: Dict[str, Any], names: Dict[int, str] = None):
@@ -382,9 +398,26 @@ def print_metrics(results: Dict[str, Any], names: Dict[int, str] = None):
     
     # 打印每个类别的结果
     if 'ap50' in results and 'ap' in results:
-        for i, (ap50, ap) in enumerate(zip(results['ap50'], results['ap'])):
-            class_name = names.get(i, f"class_{i}") if names else f"class_{i}"
-            print(f"{class_name:<15} {ap50:<10.3f} {ap:<12.3f}")
+        # 获取有计算结果的类别和所有真实标签中的类别
+        computed_classes = results.get('classes', [])
+        all_gt_classes = results.get('all_gt_classes', computed_classes)
+        
+        # 创建一个从类别索引到结果数组索引的映射
+        class_to_idx = {cls: i for i, cls in enumerate(computed_classes)}
+        
+        # 按类别索引排序显示
+        for class_id in sorted(all_gt_classes):
+            class_name = names.get(class_id, f"class_{class_id}") if names else f"class_{class_id}"
+            
+            if class_id in class_to_idx:
+                # 有计算结果的类别
+                idx = class_to_idx[class_id]
+                ap50 = results['ap50'][idx]
+                ap = results['ap'][idx]
+                print(f"{class_name:<15} {ap50:<10.3f} {ap:<12.3f}")
+            else:
+                # 没有计算结果的类别（AP为0）
+                print(f"{class_name:<15} {0.0:<10.3f} {0.0:<12.3f}")
     
     print("-" * 40)
     print(f"{'总体指标':<15}")
