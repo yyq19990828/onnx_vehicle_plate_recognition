@@ -5,7 +5,6 @@ from typing import List, Tuple, Dict, Any, Optional, Callable
 from pathlib import Path
 import cv2
 import yaml
-import os
 
 from .utils import preload_onnx_libraries, get_best_available_providers
 from utils.image_processing import preprocess_image
@@ -277,8 +276,8 @@ class RFDETROnnx(DetONNX):
             Tuple[List[np.ndarray], tuple]: 检测结果列表和原始图像形状
                                           每个检测结果格式为 [x1, y1, x2, y2, conf, class_id]
         """
-        # 预处理图像
-        input_tensor, scale, original_shape = preprocess_image(image, self.input_shape)
+        # 使用RF-DETR专用的预处理
+        input_tensor, scale, original_shape, offset = self._preprocess_rfdetr(image)
         
         # 运行推理
         outputs = self.session.run(self.output_names, {self.input_name: input_tensor})
@@ -291,49 +290,137 @@ class RFDETROnnx(DetONNX):
         pred_boxes = pred_boxes[0]  # (num_detections, 4)
         pred_logits = pred_logits[0]  # (num_detections, num_classes)
         
-        # RF-DETR通常使用sigmoid激活而不是softmax
-        scores = 1 / (1 + np.exp(-pred_logits))  # sigmoid激活
-        max_scores = np.max(scores, axis=-1)
-        class_ids = np.argmax(scores, axis=-1)
-        
         # 使用传入的置信度阈值，如果没有则使用默认值
         effective_conf_thres = conf_thres if conf_thres is not None else self.conf_thres
         
+        # 使用RF-DETR专用的后处理
+        detections_array = self._postprocess_rfdetr(
+            pred_boxes, pred_logits, scale, original_shape, offset, effective_conf_thres
+        )
+        
+        detections = [detections_array] if len(detections_array) > 0 else [[]]
+        
+        return detections, original_shape
+    
+    def _preprocess_rfdetr(self, image: np.ndarray) -> tuple:
+        """
+        RF-DETR专用的预处理函数
+        
+        Args:
+            image: 输入图像 (BGR格式)
+        
+        Returns:
+            预处理后的tensor, 缩放因子, 原始形状, 偏移量
+        """
+        original_shape = image.shape[:2]  # (H, W)
+        h, w = original_shape
+        target_size = self.input_shape[0]  # 假设是正方形输入
+        
+        # 计算缩放比例，保持长宽比
+        scale = target_size / max(h, w)
+        
+        # 计算新的尺寸
+        new_h = int(h * scale)
+        new_w = int(w * scale)
+        
+        # 缩放图像
+        resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        
+        # 创建目标尺寸的画布，使用padding填充
+        canvas = np.full((target_size, target_size, 3), 114, dtype=np.uint8)
+        
+        # 计算居中放置的位置
+        y_offset = (target_size - new_h) // 2
+        x_offset = (target_size - new_w) // 2
+        
+        # 将缩放后的图像放置到画布上
+        canvas[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized
+        
+        # 转换为RGB（RF-DETR通常需要RGB输入）
+        canvas_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+        
+        # 归一化到[0,1]
+        canvas_float = canvas_rgb.astype(np.float32) / 255.0
+        
+        # 转换为CHW格式并添加batch维度
+        tensor = np.transpose(canvas_float, (2, 0, 1))[None, ...]
+        
+        return tensor, scale, original_shape, (x_offset, y_offset)
+    
+    def _postprocess_rfdetr(
+        self, 
+        pred_boxes: np.ndarray, 
+        pred_logits: np.ndarray,
+        scale: float,
+        original_shape: tuple,
+        offset: tuple,
+        conf_threshold: float
+    ) -> np.ndarray:
+        """
+        RF-DETR专用的后处理函数
+        
+        Args:
+            pred_boxes: 预测的边界框 (num_queries, 4) - 归一化的 [cx, cy, w, h]
+            pred_logits: 预测的logits (num_queries, num_classes)
+            scale: 预处理时的缩放因子
+            original_shape: 原始图像形状 (H, W)
+            offset: 预处理时的偏移量 (x_offset, y_offset)
+            conf_threshold: 置信度阈值
+        
+        Returns:
+            检测结果 (N, 6) - [x1, y1, x2, y2, conf, class]
+        """
+        x_offset, y_offset = offset
+        target_size = self.input_shape[0]
+        
+        # 应用sigmoid激活
+        scores = 1 / (1 + np.exp(-pred_logits))
+        
+        # 获取最大得分和对应的类别
+        max_scores = np.max(scores, axis=1)
+        class_ids = np.argmax(scores, axis=1)
+        
         # 过滤低置信度检测
-        valid_mask = max_scores > effective_conf_thres
+        valid_mask = max_scores > conf_threshold
         if not np.any(valid_mask):
-            return [[]], original_shape
+            return np.zeros((0, 6))
         
         pred_boxes = pred_boxes[valid_mask]
         max_scores = max_scores[valid_mask]
         class_ids = class_ids[valid_mask]
         
-        # RF-DETR输出是center_x, center_y, width, height格式的归一化坐标
-        # 转换为xyxy格式
-        cx = pred_boxes[:, 0] * self.input_shape[1]  # center_x * 宽度
-        cy = pred_boxes[:, 1] * self.input_shape[0]  # center_y * 高度
-        w = pred_boxes[:, 2] * self.input_shape[1]   # width * 宽度
-        h = pred_boxes[:, 3] * self.input_shape[0]   # height * 高度
+        # 转换归一化坐标到像素坐标（相对于target_size）
+        cx = pred_boxes[:, 0] * target_size
+        cy = pred_boxes[:, 1] * target_size
+        w = pred_boxes[:, 2] * target_size
+        h = pred_boxes[:, 3] * target_size
         
-        # 转换为xyxy格式
+        # 转换为x1,y1,x2,y2格式（相对于target_size）
         x1 = cx - w / 2
         y1 = cy - h / 2
         x2 = cx + w / 2
         y2 = cy + h / 2
         
-        # 重新组合边界框
-        pred_boxes = np.column_stack([x1, y1, x2, y2])
+        # 考虑偏移，转换为缩放后图像的坐标
+        x1 -= x_offset
+        y1 -= y_offset
+        x2 -= x_offset
+        y2 -= y_offset
         
-        # 组合检测结果：[x1, y1, x2, y2, conf, class_id]
-        detections_array = np.column_stack([
-            pred_boxes,  # x1, y1, x2, y2
-            max_scores,  # confidence
-            class_ids    # class_id
-        ])
+        # 转换回原始图像坐标
+        x1 /= scale
+        y1 /= scale
+        x2 /= scale
+        y2 /= scale
         
-        # 缩放回原始图像尺寸
-        detections_array[:, :4] /= scale
+        # 裁剪到原始图像边界
+        h_orig, w_orig = original_shape
+        x1 = np.clip(x1, 0, w_orig)
+        y1 = np.clip(y1, 0, h_orig)
+        x2 = np.clip(x2, 0, w_orig)
+        y2 = np.clip(y2, 0, h_orig)
         
-        detections = [detections_array]
+        # 组合检测结果
+        detections = np.column_stack([x1, y1, x2, y2, max_scores, class_ids])
         
-        return detections, original_shape
+        return detections
