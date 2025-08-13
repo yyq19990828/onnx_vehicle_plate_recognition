@@ -107,6 +107,10 @@ def ap_per_class(
     ap = np.zeros((nc, tp.shape[1]))  # AP for each IoU threshold
     p = np.zeros((nc, 1000))
     r = np.zeros((nc, 1000))
+    
+    # 存储每个类别的最终精度和召回率
+    final_precision = np.zeros(nc)
+    final_recall = np.zeros(nc)
 
     for ci, c in enumerate(unique_classes):
         i = pred_cls == c
@@ -134,14 +138,25 @@ def ap_per_class(
             ap[ci, j] = compute_ap(recall[:, j], precision[:, j])
 
         # 保存精度-召回率曲线 (用于绘图)
-        py = np.interp(np.linspace(0, 1, 1000), recall[:, 0], precision[:, 0])  # 使用IoU=0.5
+        px = np.linspace(0, 1, 1000)  # 插值点
+        py = np.interp(px, recall[:, 0], precision[:, 0])  # 使用IoU=0.5
+        rx = np.interp(px, np.arange(len(recall[:, 0])), recall[:, 0])  # 插值召回率
         p[ci] = py
-        r[ci] = np.linspace(0, 1, 1000)
+        r[ci] = rx
+        
+        # 保存最终的精度和召回率（用于打印）
+        if len(precision) > 0 and len(recall) > 0:
+            # 取最高置信度时的精度和召回率
+            final_precision[ci] = float(precision[-1, 0]) if precision.ndim > 1 else float(precision[-1])
+            final_recall[ci] = float(recall[-1, 0]) if recall.ndim > 1 else float(recall[-1])
+        else:
+            final_precision[ci] = 0.0
+            final_recall[ci] = 0.0
 
     # 计算F1分数
     f1 = 2 * p * r / (p + r + eps)
 
-    return ap, p, r, f1
+    return ap, p, r, f1, final_precision, final_recall
 
 
 def process_batch(detections: np.ndarray, labels: np.ndarray, iou_thresholds: np.ndarray) -> np.ndarray:
@@ -298,7 +313,7 @@ class DetectionMetrics:
             return {}
         
         # 计算每个类别的AP
-        ap, p, r, f1 = ap_per_class(
+        ap, p, r, f1, final_precision, final_recall = ap_per_class(
             stats['tp'],
             stats['conf'], 
             stats['pred_cls'],
@@ -320,10 +335,15 @@ class DetectionMetrics:
             self.p = p[:, max_f1_idx] if len(p) else []
             self.r = r[:, max_f1_idx] if len(r) else []
             self.f1 = f1[:, max_f1_idx] if len(f1) else []
+            # 使用最终的精度和召回率（用于显示）
+            self.final_p = final_precision if len(final_precision) else []
+            self.final_r = final_recall if len(final_recall) else []
         else:
             self.p = []
             self.r = []
             self.f1 = []
+            self.final_p = []
+            self.final_r = []
         
         # 计算总体指标
         self.mp = self.p.mean() if len(self.p) else 0.0
@@ -366,6 +386,8 @@ class DetectionMetrics:
             'ap50': self.ap50,         # 每个类别的AP@0.5
             'p': p,                    # 精度曲线
             'r': r,                    # 召回率曲线
+            'final_p': self.final_p,   # 最终精度（用于显示）
+            'final_r': self.final_r,   # 最终召回率（用于显示）
             'f1': f1,                  # F1分数
             'ap_class_index': self.ap_class_index,  # 类别索引
             
@@ -521,6 +543,9 @@ def evaluate_detection(
     if results:
         results['classes'] = metrics.ap_class_index
         results['all_gt_classes'] = all_gt_classes
+        # 添加类别统计信息以支持print_metrics函数
+        results['nt_per_image'] = metrics.nt_per_image
+        results['nt_per_class'] = metrics.nt_per_class
     
     return results
 
@@ -607,7 +632,9 @@ def print_metrics(results: Dict[str, Any], names: Dict[int, str] = None):
                 ap = results['ap'][idx]
                 
                 # 尝试从结果中获取精度和召回率
-                if 'p' in results and len(results['p']) > idx:
+                if 'final_p' in results and len(results['final_p']) > idx:
+                    precision = results['final_p'][idx]
+                elif 'p' in results and len(results['p']) > idx:
                     if hasattr(results['p'][idx], 'mean'):
                         precision = results['p'][idx].mean()
                     else:
@@ -615,7 +642,9 @@ def print_metrics(results: Dict[str, Any], names: Dict[int, str] = None):
                 else:
                     precision = 0
                 
-                if 'r' in results and len(results['r']) > idx:
+                if 'final_r' in results and len(results['final_r']) > idx:
+                    recall = results['final_r'][idx]
+                elif 'r' in results and len(results['r']) > idx:
                     if hasattr(results['r'][idx], 'mean'):
                         recall = results['r'][idx].mean()
                     else:
@@ -623,14 +652,30 @@ def print_metrics(results: Dict[str, Any], names: Dict[int, str] = None):
                 else:
                     recall = 0
                 
-                # 图像数和实例数（简化处理）
-                images = 1  # 占位符
-                instances = 1  # 占位符
+                # 获取该类别的真实图像数和实例数
+                if 'nt_per_image' in results and 'nt_per_class' in results:
+                    nt_per_image = results['nt_per_image']
+                    nt_per_class = results['nt_per_class']
+                    images = nt_per_image[class_id] if class_id < len(nt_per_image) else 0
+                    instances = nt_per_class[class_id] if class_id < len(nt_per_class) else 0
+                else:
+                    # 如果没有统计信息，尝试估算
+                    # 根据该类别在computed_classes中的位置估算
+                    images = total_images  # 假设该类别可能在所有图像中出现
+                    instances = int(total_instances / len(all_gt_classes)) if len(all_gt_classes) > 0 else 0
                 
                 print(f"{class_name:>22} {images:>11d} {instances:>11d} {precision:>11.3g} {recall:>11.3g} {ap50:>11.3g} {ap:>11.3g}")
             else:
-                # 没有预测结果的类别
-                print(f"{class_name:>22} {0:>11d} {0:>11d} {0:>11.3g} {0:>11.3g} {0:>11.3g} {0:>11.3g}")
+                # 没有预测结果的类别，但可能有真实标签
+                if 'nt_per_image' in results and 'nt_per_class' in results:
+                    nt_per_image = results['nt_per_image']
+                    nt_per_class = results['nt_per_class']
+                    images = nt_per_image[class_id] if class_id < len(nt_per_image) else 0
+                    instances = nt_per_class[class_id] if class_id < len(nt_per_class) else 0
+                else:
+                    images = 0
+                    instances = 0
+                print(f"{class_name:>22} {images:>11d} {instances:>11d} {0:>11.3g} {0:>11.3g} {0:>11.3g} {0:>11.3g}")
 
     # 打印总体指标
     map50 = results.get('map50', 0)
