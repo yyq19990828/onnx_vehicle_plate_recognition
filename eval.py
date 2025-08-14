@@ -14,5 +14,5 @@ detector = RTDETROnnx(onnx_path='/home/tyjt/桌面/rtdetr-l.onnx')
 evaluator = DatasetEvaluator(detector)
 evaluator.evaluate_dataset(
     dataset_path='../yolo_dataset',
-    conf_threshold=0.001  # 设置置信度阈值为0.001，过滤低置信度检测
+    conf_threshold=0.25  # 与Ultralytics对齐，避免0.001被重置为0.25导致的结果不一致
 )

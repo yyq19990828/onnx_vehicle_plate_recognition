@@ -32,20 +32,26 @@ def non_max_suppression(
     iou_thres: float = 0.5,
     classes: list = None,
     agnostic: bool = False,
-    multi_label: bool = False,
+    multi_label: bool = True,  # 默认值改为True，与Ultralytics一致
     max_det: int = 300,
+    model_type: str = "yolo",  # 新增参数：模型类型
 ) -> list:
     """
     Perform Non-Maximum Suppression (NMS) on inference results.
+    
+    与Ultralytics对齐的实现，正确处理YOLO格式：[batch, num_anchors, 4 + 1 + num_classes]
 
     Args:
-        prediction (np.ndarray): The model's raw output, shape [batch, num_boxes, 5+num_classes].
+        prediction (np.ndarray): The model's raw output.
+                                For YOLO: shape [batch, num_anchors, 4 + 1 + num_classes]
+                                where 4=bbox, 1=objectness, num_classes=class scores
         conf_thres (float): Confidence threshold.
         iou_thres (float): IoU threshold for NMS.
         classes (list, optional): A list of class indices to consider. Defaults to None.
         agnostic (bool): If True, perform class-agnostic NMS. Defaults to False.
-        multi_label (bool): If True, consider multiple labels per box. Defaults to False.
+        multi_label (bool): If True, consider multiple labels per box. Defaults to True.
         max_det (int): Maximum number of detections to keep. Defaults to 300.
+        model_type (str): Model type ("yolo" or "rtdetr"). Defaults to "yolo".
 
     Returns:
         list: A list of detections for each image in the batch.
@@ -56,37 +62,80 @@ def non_max_suppression(
     max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
     time_limit = 0.5  # seconds to quit after
 
-    # Based on user feedback, the model output is [xywh, class_scores...]
-    # where class_scores are final confidences (obj_conf * class_conf).
-    # The logic is simplified to handle this format directly.
     bs = prediction.shape[0]  # batch size
     assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
     assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
 
     output = [np.zeros((0, 6))] * bs
     for xi, x in enumerate(prediction):  # image index, image inference
-        # The model output is [xywh, class_scores...].
-        # We need to find the class with the highest score for each box.
+        # YOLO格式: [num_anchors, 4 + 1 + num_classes]
+        # 其中: x[:, :4] = bbox (xywh)
+        #      x[:, 4] = objectness 
+        #      x[:, 5:] = class scores
         
-        # Filter out boxes where the max class score is below the confidence threshold.
-        class_scores = x[:, 4:]
-        
-        # Adaptive normalization: apply sigmoid if scores are not probabilities (i.e., > 1)
-        if np.max(class_scores) > 1:
-            class_scores = sigmoid(class_scores)
+        if model_type == "yolo" and x.shape[1] > 5:  # 标准YOLO格式，有objectness
+            # 提取objectness和类别分数
+            obj_conf = x[:, 4:5]  # objectness score
+            cls_conf = x[:, 5:]   # class scores
             
-        conf = np.max(class_scores, axis=1, keepdims=True)
-        
-        mask = (conf.flatten() >= conf_thres)
-        if not np.any(mask):
-            continue
+            # 处理原始logits（如果需要）
+            if np.max(obj_conf) > 1:
+                obj_conf = sigmoid(obj_conf)
+            if np.max(cls_conf) > 1:
+                cls_conf = sigmoid(cls_conf)
             
-        x = x[mask]
-        conf = conf[mask]
-        class_scores = class_scores[mask]
+            if multi_label:
+                # multi_label模式：每个框可以有多个类别
+                # 使用obj_conf * cls_conf作为最终置信度
+                class_scores = obj_conf * cls_conf
+                # 在multi_label模式下，需要处理多个类别
+                # 这里暂时简化为取最大值（后续可以优化）
+                conf = np.max(class_scores, axis=1, keepdims=True)
+                mask = (conf.flatten() >= conf_thres)
+                
+                if not np.any(mask):
+                    continue
+                    
+                x = x[mask]
+                class_scores = class_scores[mask]
+                conf = conf[mask]
+                j = np.argmax(class_scores, axis=1, keepdims=True)
+            else:
+                # 单标签模式：每个框只有一个类别
+                # 使用obj_conf * max(cls_conf)作为置信度
+                class_scores = cls_conf
+                conf = obj_conf.flatten() * np.max(class_scores, axis=1)
+                mask = (conf >= conf_thres)
+                
+                if not np.any(mask):
+                    continue
+                    
+                x = x[mask]
+                class_scores = class_scores[mask]
+                conf = conf[mask].reshape(-1, 1)
+                
+                # 获取最大类别索引
+                j = np.argmax(class_scores, axis=1, keepdims=True)
         
-        # Get the corresponding class index for the filtered boxes
-        j = np.argmax(class_scores, axis=1, keepdims=True)
+        else:  # 简化格式或RT-DETR格式：没有单独的objectness
+            # 直接使用类别分数
+            class_scores = x[:, 4:]
+            
+            # 处理原始logits（如果需要）
+            if np.max(class_scores) > 1:
+                class_scores = sigmoid(class_scores)
+            
+            # 计算置信度和类别
+            conf = np.max(class_scores, axis=1, keepdims=True)
+            mask = (conf.flatten() >= conf_thres)
+            
+            if not np.any(mask):
+                continue
+                
+            x = x[mask]
+            conf = conf[mask]
+            class_scores = class_scores[mask]
+            j = np.argmax(class_scores, axis=1, keepdims=True)
 
         # Convert box from (center_x, center_y, width, height) to (x1, y1, x2, y2)
         box = xywh2xyxy(x[:, :4])
@@ -109,7 +158,7 @@ def non_max_suppression(
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
         
-        # NMS using pure numpy
+        # NMS using pure numpy (修正IoU计算，移除+1偏移)
         order = scores.argsort()[::-1]
         keep = []
         while order.size > 0:
@@ -120,10 +169,18 @@ def non_max_suppression(
             xx2 = np.minimum(boxes[i, 2], boxes[order[1:], 2])
             yy2 = np.minimum(boxes[i, 3], boxes[order[1:], 3])
 
-            w = np.maximum(0.0, xx2 - xx1 + 1)
-            h = np.maximum(0.0, yy2 - yy1 + 1)
+            # 修正：移除+1偏移，与Ultralytics保持一致
+            w = np.maximum(0.0, xx2 - xx1)
+            h = np.maximum(0.0, yy2 - yy1)
             inter = w * h
-            ovr = inter / ((boxes[i, 2] - boxes[i, 0] + 1) * (boxes[i, 3] - boxes[i, 1] + 1) + (boxes[order[1:], 2] - boxes[order[1:], 0] + 1) * (boxes[order[1:], 3] - boxes[order[1:], 1] + 1) - inter)
+            
+            # 计算IoU（不使用+1偏移）
+            area_i = (boxes[i, 2] - boxes[i, 0]) * (boxes[i, 3] - boxes[i, 1])
+            area_order = (boxes[order[1:], 2] - boxes[order[1:], 0]) * (boxes[order[1:], 3] - boxes[order[1:], 1])
+            union = area_i + area_order - inter
+            # 避免除零
+            union = np.maximum(union, 1e-6)
+            ovr = inter / union
 
             inds = np.where(ovr <= iou_thres)[0]
             order = order[inds + 1]

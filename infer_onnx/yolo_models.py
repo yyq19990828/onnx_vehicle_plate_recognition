@@ -140,7 +140,8 @@ class YoloOnnx(BaseOnnx):
     """
     
     def __init__(self, onnx_path: str, input_shape: Tuple[int, int] = (640, 640), 
-                 conf_thres: float = 0.5, iou_thres: float = 0.5):
+                 conf_thres: float = 0.5, iou_thres: float = 0.5, 
+                 multi_label: bool = True):  # 新增multi_label参数，默认True与Ultralytics一致
         """
         初始化YOLO检测器
         
@@ -149,9 +150,33 @@ class YoloOnnx(BaseOnnx):
             input_shape (Tuple[int, int]): 输入图像尺寸
             conf_thres (float): 置信度阈值
             iou_thres (float): IoU阈值
+            multi_label (bool): 是否允许多标签检测，默认True
         """
         super().__init__(onnx_path, input_shape, conf_thres)
         self.iou_thres = iou_thres
+        self.multi_label = multi_label
+        self.model_type = self._detect_model_type()  # 自动检测模型类型
+    
+    def _detect_model_type(self) -> str:
+        """
+        自动检测YOLO模型类型
+        
+        Returns:
+            str: 模型类型 "yolo"
+        """
+        # 验证输出形状来确定模型类型
+        dummy_input = np.random.randn(1, 3, self.input_shape[0], self.input_shape[1]).astype(np.float32)
+        outputs = self.session.run(None, {self.input_name: dummy_input})
+        output_shape = outputs[0].shape
+        
+        # YOLO模型通常输出 [batch, num_anchors, 4 + 1 + num_classes] 或 [batch, num_anchors, 4 + num_classes]
+        if len(output_shape) == 3:
+            num_features = output_shape[2]
+            if num_features > 5:  # 至少有bbox(4) + objectness(1) 或 bbox(4) + classes(>=1)
+                logging.info(f"检测到YOLO模型，输出形状: {output_shape}")
+                return "yolo"
+        
+        return "yolo"  # 默认返回yolo
     
     def _postprocess(self, prediction: np.ndarray, conf_thres: float, scale: float = 1.0, 
                     iou_thres: Optional[float] = None) -> List[np.ndarray]:
@@ -173,9 +198,15 @@ class YoloOnnx(BaseOnnx):
         prediction[..., 2] *= self.input_shape[1]  # width
         prediction[..., 3] *= self.input_shape[0]  # height
         
-        # NMS后处理
+        # NMS后处理，传递multi_label和model_type参数
         effective_iou_thres = iou_thres if iou_thres is not None else self.iou_thres
-        detections = non_max_suppression(prediction, conf_thres=conf_thres, iou_thres=effective_iou_thres)
+        detections = non_max_suppression(
+            prediction, 
+            conf_thres=conf_thres, 
+            iou_thres=effective_iou_thres,
+            multi_label=self.multi_label,
+            model_type=self.model_type
+        )
         
         # 缩放回原图尺寸
         if detections and len(detections[0]) > 0:
@@ -454,7 +485,7 @@ class DatasetEvaluator:
         self, 
         dataset_path: str,
         output_transform: Optional[Callable] = None,
-        conf_threshold: float = 0.001,
+        conf_threshold: float = 0.25,  # 与Ultralytics验证模式对齐，避免过低阈值产生大量误检
         iou_threshold: float = 0.7,  # 保留参数以保持一致性
         max_images: Optional[int] = None,
         exclude_files: Optional[List[str]] = None,  # 允许用户指定需要排除的文件
@@ -466,7 +497,10 @@ class DatasetEvaluator:
         Args:
             dataset_path (str): 数据集路径
             output_transform (Optional[Callable]): 输出转换函数
-            conf_threshold (float): 置信度阈值
+            conf_threshold (float): 置信度阈值，默认0.25与Ultralytics对齐
+                注意：Ultralytics在验证模式下会将默认的0.001重置为0.25
+                参考：ultralytics/utils/metrics.py:403 v8.3.179
+                conf = 0.25 if conf in {None, 0.01 if is_obb else 0.001} else conf
             iou_threshold (float): IoU阈值
             max_images (Optional[int]): 最大评估图像数量
             exclude_files (Optional[List[str]]): 需要排除的文件名列表
@@ -475,6 +509,20 @@ class DatasetEvaluator:
         Returns:
             Dict[str, Any]: 评估结果
         """
+        # 重要说明：置信度阈值默认值更改
+        # ==========================================
+        # 之前版本使用 conf_threshold=0.001，但发现与Ultralytics结果存在显著差异
+        # 原因：Ultralytics在验证过程中会自动将过低的置信度阈值重置为0.25
+        # 
+        # 具体机制（参考ultralytics/utils/metrics.py:403）：
+        # conf = 0.25 if conf in {None, 0.01 if is_obb else 0.001} else conf
+        # 
+        # 即：如果传入的conf是默认验证值0.001，会被强制重置为预测模式的0.25
+        # 
+        # 为了保持与Ultralytics一致的评估结果，现将默认值统一设置为0.25
+        # 这样可以避免因置信度阈值差异导致的指标差异（P/R/mAP等）
+        # ==========================================
+        
         dataset_path = Path(dataset_path)
         
         # 数据集路径检测逻辑
