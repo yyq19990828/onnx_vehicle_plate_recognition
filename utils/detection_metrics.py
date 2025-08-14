@@ -56,31 +56,29 @@ def smooth(y: np.ndarray, f: float = 0.05) -> np.ndarray:
     return np.convolve(yp, np.ones(nf) / nf, mode="valid")  # y-smoothed
 
 
-def compute_ap(recall: np.ndarray, precision: np.ndarray) -> float:
+def compute_ap(recall: np.ndarray, precision: np.ndarray) -> Tuple[float, np.ndarray, np.ndarray]:
     """
-    计算平均精度 (AP)
+    计算平均精度 (AP) - 与ultralytics完全对齐
     
     Args:
         recall (np.ndarray): 召回率数组
         precision (np.ndarray): 精度数组
         
     Returns:
-        float: 平均精度
+        Tuple[float, np.ndarray, np.ndarray]: (AP值, 精度包络线, 修改后的召回率)
     """
     # 在开头和结尾添加哨兵值
     mrec = np.concatenate(([0.0], recall, [1.0]))
     mpre = np.concatenate(([1.0], precision, [0.0]))
 
-    # 计算精度的单调递减序列
-    for i in range(mpre.size - 1, 0, -1):
-        mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+    # 计算精度包络线 (与ultralytics相同的方法)
+    mpre = np.flip(np.maximum.accumulate(np.flip(mpre)))
 
-    # 查找召回率发生变化的点
-    i = np.where(mrec[1:] != mrec[:-1])[0]
-
-    # 计算曲线下面积
-    ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
-    return ap
+    # 使用101点插值方法 (COCO标准)
+    x = np.linspace(0, 1, 101)
+    ap = np.trapz(np.interp(x, mrec, mpre), x)
+    
+    return ap, mpre, mrec
 
 
 def ap_per_class(
@@ -116,6 +114,9 @@ def ap_per_class(
     p = np.zeros((nc, 1000))
     r = np.zeros((nc, 1000))
     
+    # 为绘图创建x轴坐标
+    x = np.linspace(0, 1, 1000)
+    
     # 存储每个类别的最终精度和召回率
     final_precision = np.zeros(nc)
     final_recall = np.zeros(nc)
@@ -141,12 +142,14 @@ def ap_per_class(
         # 精度
         precision = tpc / (tpc + fpc)
 
-        # AP from recall-precision curve
+        # AP from recall-precision curve  
         for j in range(tp.shape[1]):
-            ap[ci, j] = compute_ap(recall[:, j], precision[:, j])
+            ap[ci, j], mpre, mrec = compute_ap(recall[:, j], precision[:, j])
+            if j == 0:
+                # 保存precision值用于绘图(与ultralytics对齐)
+                prec_values = np.interp(x, mrec, mpre)
 
         # 保存精度-召回率曲线 (用于绘图，按照Ultralytics方式)
-        x = np.linspace(0, 1, 1000)
         # 使用负值插值，因为置信度是降序排列的
         r_interp = np.interp(-x, -conf[i], recall[:, 0], left=0)  # 召回率插值
         p_interp = np.interp(-x, -conf[i], precision[:, 0], left=1)  # 精度插值
@@ -158,10 +161,9 @@ def ap_per_class(
     
     # 按照Ultralytics方式，找到最大F1对应的置信度阈值
     f1_mean = f1.mean(0) if len(f1) > 0 else np.zeros(1000)  # 所有类别的平均F1曲线
-    f1_smoothed = smooth(f1_mean, 0.1)  # 平滑F1曲线
-    max_f1_idx = f1_smoothed.argmax()  # 最大F1对应的索引
+    max_f1_idx = smooth(f1_mean, 0.1).argmax()  # 平滑F1曲线并找到最大F1索引
     
-    # 提取最大F1时的精度、召回率
+    # 提取最大F1时的精度、召回率 (与ultralytics完全一致)
     final_precision = p[:, max_f1_idx] if len(p) > 0 else np.zeros(nc)
     final_recall = r[:, max_f1_idx] if len(r) > 0 else np.zeros(nc)
 

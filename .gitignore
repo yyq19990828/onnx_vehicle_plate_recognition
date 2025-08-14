@@ -49,3 +49,5 @@ data/*.jpg
 
 runs/
 run.sh
+
+third_party/
