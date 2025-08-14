@@ -119,11 +119,16 @@ class BaseOnnx(ABC):
         
         # 推理
         outputs = self.session.run(self.output_names, {self.input_name: input_tensor})
-        prediction = outputs[0]
         
-        # 后处理
+        # 后处理 - 根据子类不同传递不同参数
         effective_conf_thres = conf_thres if conf_thres is not None else self.conf_thres
-        detections = self._postprocess(prediction, effective_conf_thres, scale=scale, **kwargs)
+        
+        # RF-DETR需要完整的outputs，其他模型使用第一个输出
+        if type(self).__name__ == 'RFDETROnnx':
+            detections = self._postprocess(outputs, effective_conf_thres, **kwargs)
+        else:
+            prediction = outputs[0]
+            detections = self._postprocess(prediction, effective_conf_thres, scale=scale, **kwargs)
         
         return detections, original_shape
     
@@ -388,57 +393,182 @@ class RFDETROnnx(BaseOnnx):
     RF-DETR模型ONNX推理类
     
     支持RF-DETR (ResNet-based Feature Pyramid + DETR) 模型
+    输出格式：两个独立的输出 - pred_boxes 和 pred_logits
     """
     
-    def __init__(self, onnx_path: str, input_shape: Tuple[int, int] = (640, 640), conf_thres: float = 0.001):
+    def __init__(self, onnx_path: str, input_shape: Tuple[int, int] = (576, 576), conf_thres: float = 0.001):
         """
         初始化RF-DETR检测器
         
         Args:
             onnx_path (str): ONNX模型文件路径
-            input_shape (Tuple[int, int]): 输入图像尺寸
+            input_shape (Tuple[int, int]): 输入图像尺寸，默认576x576
             conf_thres (float): 置信度阈值
         """
         super().__init__(onnx_path, input_shape, conf_thres)
+        
+        # 验证RF-DETR输出格式
+        dummy_input = np.random.randn(1, 3, self.input_shape[0], self.input_shape[1]).astype(np.float32)
+        outputs = self.session.run(None, {self.input_name: dummy_input})
+        
+        if len(outputs) != 2:
+            raise ValueError(f"RF-DETR模型应该有2个输出（pred_boxes, pred_logits），但实际有{len(outputs)}个")
+        
+        pred_boxes_shape, pred_logits_shape = outputs[0].shape, outputs[1].shape
+        logging.info(f"RF-DETR输出格式 - pred_boxes: {pred_boxes_shape}, pred_logits: {pred_logits_shape}")
+        
+        if len(pred_boxes_shape) != 3 or pred_boxes_shape[2] != 4:
+            logging.warning(f"警告: pred_boxes形状 {pred_boxes_shape} 可能不符合标准RF-DETR格式")
+        
+        if len(pred_logits_shape) != 3 or pred_logits_shape[1] != pred_boxes_shape[1]:
+            logging.warning(f"警告: pred_logits形状 {pred_logits_shape} 与pred_boxes不匹配")
     
-    def _postprocess(self, prediction: np.ndarray, conf_thres: float, scale: float = 1.0) -> List[np.ndarray]:
+    def _preprocess(self, image: np.ndarray) -> Tuple[np.ndarray, float, tuple]:
         """
-        RF-DETR后处理逻辑
+        RF-DETR预处理（对齐原始实现）
+        
+        基于third_party/rfdetr/datasets/coco.py中的make_coco_transforms实现
+        使用ImageNet标准化参数：mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
         
         Args:
-            prediction (np.ndarray): 模型原始输出
+            image (np.ndarray): 输入图像，BGR格式
+            
+        Returns:
+            Tuple: (预处理后的tensor, scale, 原始形状)
+        """
+        original_shape = image.shape[:2]  # (H, W)
+        h, w = original_shape
+        target_h, target_w = self.input_shape
+        
+        # 直接resize到目标尺寸（对齐SquareResize）
+        resized = cv2.resize(image, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+        
+        # 转换为RGB（PyTorch通常使用RGB）
+        resized_rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+        
+        # 转换为[0,1]范围（对齐ToTensor）
+        normalized = resized_rgb.astype(np.float32) / 255.0
+        
+        # 应用ImageNet标准化（对齐Normalize）
+        imagenet_mean = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 3)
+        imagenet_std = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 3)
+        normalized = (normalized - imagenet_mean) / imagenet_std
+        
+        # 转换为CHW格式并添加batch维度
+        tensor = np.transpose(normalized, (2, 0, 1))[None, ...]
+        
+        # 计算缩放因子
+        scale_h = target_h / h
+        scale_w = target_w / w
+        scale = min(scale_h, scale_w)  # 取最小缩放因子作为代表
+        
+        return tensor, scale, original_shape
+    
+    def _postprocess(self, outputs: List[np.ndarray], conf_thres: float, **kwargs) -> List[np.ndarray]:
+        """
+        RF-DETR后处理逻辑（对齐原始实现）
+        
+        基于third_party/rfdetr/models/lwdetr.py中的PostProcess类实现
+        
+        Args:
+            outputs (List[np.ndarray]): 模型原始输出 [pred_boxes, pred_logits]
             conf_thres (float): 置信度阈值
-            scale (float): 图像缩放因子
+            **kwargs: 其他参数
             
         Returns:
             List[np.ndarray]: 后处理后的检测结果
         """
-        # RF-DETR的具体后处理逻辑
-        # 这里需要根据实际的RF-DETR模型输出格式来实现
-        # 暂时使用简化版本
+        pred_boxes, pred_logits = outputs[0], outputs[1]  # [batch, 300, 4], [batch, 300, 15]
         
-        detections = []
+        bs = pred_boxes.shape[0]
+        num_queries = pred_boxes.shape[1]
+        num_classes = pred_logits.shape[2]
         
-        # 假设prediction形状为 [batch, num_boxes, num_features]
-        for batch_idx in range(prediction.shape[0]):
-            batch_pred = prediction[batch_idx]
+        results = []
+        
+        # 为每个batch中的图像处理
+        for i in range(bs):
+            out_logits = pred_logits[i]  # [300, 15]
+            out_bbox = pred_boxes[i]     # [300, 4]
             
-            # 提取置信度和类别信息（具体格式需要根据模型调整）
-            # 这里是示例代码
-            if batch_pred.shape[-1] >= 6:  # 至少包含 [x, y, w, h, conf, cls]
-                confs = batch_pred[:, 4]
-                valid_mask = confs > conf_thres
-                valid_pred = batch_pred[valid_mask]
+            # 使用sigmoid激活（对齐原始实现）
+            prob = 1.0 / (1.0 + np.exp(-out_logits))  # sigmoid
+            
+            # topk选择（对齐原始PostProcess.forward）
+            # 将prob展平并选择top-k个值
+            prob_flat = prob.flatten()  # [300*15]
+            
+            # 选择top 300个检测（num_select=300）
+            num_select = min(300, len(prob_flat))
+            topk_indices = np.argpartition(prob_flat, -num_select)[-num_select:]
+            topk_indices = topk_indices[np.argsort(prob_flat[topk_indices])][::-1]  # 降序排序
+            
+            scores = prob_flat[topk_indices]
+            
+            # 计算对应的box和label索引
+            topk_boxes_idx = topk_indices // num_classes  # 对应的query索引
+            labels = topk_indices % num_classes           # 对应的类别索引
+            
+            # 提取对应的bbox
+            boxes = out_bbox[topk_boxes_idx]  # [num_select, 4]
+            
+            # 坐标转换：从cxcywh到xyxy（对齐box_ops.box_cxcywh_to_xyxy）
+            x_c, y_c, w, h = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+            w = np.clip(w, a_min=0.0, a_max=None)  # clamp(min=0.0)
+            h = np.clip(h, a_min=0.0, a_max=None)
+            
+            x1 = x_c - 0.5 * w
+            y1 = y_c - 0.5 * h  
+            x2 = x_c + 0.5 * w
+            y2 = y_c + 0.5 * h
+            
+            boxes_xyxy = np.column_stack([x1, y1, x2, y2])
+            
+            # 缩放到输入图像尺寸（从归一化坐标[0,1]到像素坐标）
+            imgsz_w, imgsz_h = self.input_shape[1], self.input_shape[0]  # (width, height)
+            scale_fct = np.array([imgsz_w, imgsz_h, imgsz_w, imgsz_h])
+            boxes_xyxy = boxes_xyxy * scale_fct
+            
+            # 置信度过滤
+            mask = scores > conf_thres
+            if np.any(mask):
+                final_scores = scores[mask]
+                final_labels = labels[mask]
+                final_boxes = boxes_xyxy[mask]
                 
-                # 缩放回原图尺寸
-                if len(valid_pred) > 0:
-                    valid_pred[:, :4] /= scale
-                
-                detections.append(valid_pred)
+                # 组合结果：[x1, y1, x2, y2, conf, class]
+                pred = np.column_stack([final_boxes, final_scores, final_labels])
             else:
-                detections.append(np.zeros((0, 6)))
+                pred = np.zeros((0, 6))
+            
+            results.append(pred)
         
-        return detections
+        return results
+    
+    def __call__(self, image: np.ndarray, conf_thres: Optional[float] = None) -> Tuple[List[np.ndarray], tuple]:
+        """
+        RF-DETR推理接口
+        
+        Args:
+            image (np.ndarray): 输入图像，BGR格式
+            conf_thres (Optional[float]): 置信度阈值
+            
+        Returns:
+            Tuple[List[np.ndarray], tuple]: 检测结果列表和原始图像形状
+        """
+        # 使用RF-DETR特定的预处理
+        input_tensor, _, original_shape = self._preprocess(image)
+        
+        # 运行推理
+        outputs = self.session.run(self.output_names, {self.input_name: input_tensor})
+        
+        # 使用传入的置信度阈值，如果没有则使用默认值
+        effective_conf_thres = conf_thres if conf_thres is not None else self.conf_thres
+        
+        # RF-DETR后处理
+        detections = self._postprocess(outputs, effective_conf_thres)
+        
+        return detections, original_shape
 
 
 def create_detector(model_type: str, onnx_path: str, **kwargs) -> BaseOnnx:
@@ -662,8 +792,8 @@ class DatasetEvaluator:
             if detections and len(detections[0]) > 0:
                 pred = detections[0].copy()  # [N, 6] format: [x1, y1, x2, y2, conf, class]
                 # 缩放坐标从输入尺寸到原图尺寸（复刻 ultralytics pred_to_json 逻辑）
-                # RT-DETR需要特殊的坐标缩放
-                if type(self.detector).__name__ == 'RTDETROnnx':
+                # RT-DETR和RF-DETR需要特殊的坐标缩放
+                if type(self.detector).__name__ in ['RTDETROnnx', 'RFDETROnnx']:
                     pred[:, [0, 2]] = pred[:, [0, 2]] * img_width / self.detector.input_shape[1]   # x坐标缩放
                     pred[:, [1, 3]] = pred[:, [1, 3]] * img_height / self.detector.input_shape[0]  # y坐标缩放
             else:
