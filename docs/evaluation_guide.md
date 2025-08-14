@@ -10,7 +10,7 @@ onnx_vehicle_plate_recognition/
 │   ├── detection_metrics.py      # 核心指标计算模块
 │   └── output_transforms.py      # 输出格式转换函数
 ├── infer_onnx/
-│   └── det_onnx.py               # 增强的ONNX检测类
+│   └── yolo_models.py            # 统一的YOLO模型API
 ├── demo_evaluation.py            # 评估演示脚本
 └── test_metrics.py              # 指标计算测试
 ```
@@ -27,13 +27,16 @@ onnx_vehicle_plate_recognition/
 ### 1. 基本评估（YOLO模型）
 
 ```python
-from infer_onnx.det_onnx import DetONNX
+from infer_onnx import YoloOnnx, DatasetEvaluator
 
 # 初始化检测器
-detector = DetONNX("models/yolo_model.onnx", conf_thres=0.25)
+detector = YoloOnnx("models/yolo_model.onnx", conf_thres=0.25)
+
+# 使用统一评估器
+evaluator = DatasetEvaluator(detector)
 
 # 运行评估
-results = detector.evaluate_dataset(
+results = evaluator.evaluate_dataset(
     dataset_path="path/to/dataset",  # 包含images/和labels/文件夹
     conf_threshold=0.001,            # 评估时的置信度阈值
     max_images=1000                  # 限制评估图像数量（可选）
@@ -46,17 +49,18 @@ print(f"mAP@0.5:0.95: {results['map']:.3f}")
 ### 2. 使用输出转换（非YOLO模型）
 
 ```python
-from infer_onnx.det_onnx import RFDETROnnx
+from infer_onnx import RFDETROnnx, DatasetEvaluator
 from utils.output_transforms import get_transform_function
 
 # 初始化RF-DETR检测器
 detector = RFDETROnnx("models/rf-detr.onnx")
+evaluator = DatasetEvaluator(detector)
 
 # 获取预定义的转换函数
 transform_fn = get_transform_function('rfdetr')
 
 # 运行评估
-results = detector.evaluate_dataset(
+results = evaluator.evaluate_dataset(
     dataset_path="path/to/dataset",
     output_transform=transform_fn,  # 指定输出转换函数
     conf_threshold=0.001
