@@ -1,16 +1,16 @@
 库结果
                  Class      Images   Instances       Box(P           R       mAP50   mAP50-95)
-                   car         806       16654        0.45       0.956       0.916       0.676
-                 truck         273         408       0.166       0.887       0.827       0.599
-                   bus         278         357       0.533       0.955       0.947       0.765
-               bicycle         806        8872       0.393       0.937        0.84       0.528
-               cyclist         806       15663       0.179       0.886       0.767       0.476
-              tricycle         580        1026       0.134       0.852        0.73       0.467
-            pedestrian         806       11925      0.0962       0.789       0.501       0.231
-                 other          15          15      0.0361       0.667       0.567       0.436
-            motorcycle          11          11      0.0238       0.727        0.53       0.425
-                   all         806       54931       0.851      0.0282       0.736       0.511
-Speed: 11.1ms preprocess, 17.3ms inference, 0.0ms loss, 0.0ms postprocess per image
+                   car         806       16654        0.82       0.788       0.849       0.519
+                 truck         273         408       0.598       0.642       0.587       0.366
+                   bus         278         357       0.926       0.798       0.839       0.558
+               bicycle         806        8872       0.703       0.631       0.682       0.329
+               cyclist         806       15663       0.737       0.675       0.723       0.388
+              tricycle         580        1026       0.434       0.502       0.469       0.272
+            pedestrian         806       11925        0.66       0.323       0.407       0.161
+                 other          15          15        0.52       0.147       0.222       0.121
+            motorcycle          11          11           0           0           0           0
+                   all         806       54931       0.603       0.499       0.531       0.301
+Speed: 10.6ms preprocess, 24.1ms inference, 0.0ms loss, 0.0ms postprocess per image
 
 yolo库
                  Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100%|██████████| 797/797 [00:
