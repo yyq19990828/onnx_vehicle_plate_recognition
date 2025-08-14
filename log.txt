@@ -12,5 +12,16 @@
                    all         806       54931       0.851      0.0282       0.736       0.511
 Speed: 11.1ms preprocess, 17.3ms inference, 0.0ms loss, 0.0ms postprocess per image
 
-原始权重在https://github.com/roboflow/rf-detr 的val结果
-{"class_map": {"valid": [{"class": "car", "map@50:95": 0.7171400748752577, "map@50": 0.9434062057576477, "precision": 0.998304126625212, "recall": 0.63}, {"class": "truck", "map@50:95": 0.6455800636300137, "map@50": 0.8674077115875183, "precision": 0.9890510948905109, "recall": 0.63}, {"class": "bus", "map@50:95": 0.7946965031297236, "map@50": 0.9636305271481509, "precision": 1.0, "recall": 0.63}, {"class": "bicycle", "map@50:95": 0.5960548596104775, "map@50": 0.9111846822554813, "precision": 0.979670522257273, "recall": 0.63}, {"class": "cyclist", "map@50:95": 0.5240917518852034, "map@50": 0.8366756621273069, "precision": 0.9827775012444002, "recall": 0.63}, {"class": "tricycle", "map@50:95": 0.514700725493438, "map@50": 0.7909425397387199, "precision": 0.9500734214390602, "recall": 0.63}, {"class": "pedestrian", "map@50:95": 0.29650990347675726, "map@50": 0.6421883189461173, "precision": 0.5920409771473601, "recall": 0.63}, {"class": "other", "map@50:95": 0.41436477713705433, "map@50": 0.551091647626301, "precision": 0.5555555555555556, "recall": 0.63}, {"class": "motorcycle", "map@50:95": 0.39366579866079093, "map@50": 0.5142007873371978, "precision": 0.4375, "recall": 0.63}, {"class": "all", "map@50:95": 0.5440893842109685, "map@50": 0.7800808980582713, "precision": 0.8316636887954858, "recall": 0.63}]}, "map": 0.7800808980582713, "precision": 0.8316636887954858, "recall": 0.63}
+yolo库
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100%|██████████| 797/797 [00:
+                   all        797      54444      0.744      0.646      0.724      0.499
+                   car        797      16486      0.845      0.925      0.946      0.734
+                 truck        266        401      0.805      0.796      0.822      0.591
+                   bus        276        352      0.872      0.946      0.963      0.777
+               bicycle        797       8835      0.763      0.862      0.886      0.575
+               cyclist        797      15505      0.787      0.803      0.847      0.546
+            tricyclist        571       1015      0.879      0.749      0.824      0.541
+            pedestrian        797      11824      0.746       0.53      0.631      0.291
+                 other         15         15          1        0.2        0.6       0.44
+             motocycle         11         11          0          0          0          0
+Speed: 0.3ms preprocess, 11.1ms inference, 0.0ms loss, 1.1ms postprocess per image
