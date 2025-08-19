@@ -1,0 +1,28 @@
+[project]
+name = "mcp-vehicle-detection"
+version = "0.1.0"
+description = "Vehicle detection service using ONNX models with MCP protocol support"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "onnxruntime",
+    "opencv-contrib-python",
+    "numpy",
+    "pyyaml",
+    "colorlog",
+    "mcp>=1.0.0",
+    "pillow",
+    "coloredlogs",
+    "requests>=2.32.4",
+    "urllib3>=2.5.0",
+]
+
+[project.scripts]
+mcp-vehicle-detection = "server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
