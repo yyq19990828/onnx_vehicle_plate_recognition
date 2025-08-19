@@ -13,3 +13,6 @@ dependencies = [
     "pillow>=11.3.0",
     "pyyaml>=6.0.2",
 ]
+
+[tool.uv.workspace]
+members = ["mcp_vehicle_detection"]

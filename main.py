@@ -228,6 +228,8 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='ONNX Vehicle and Plate Recognition')
     parser.add_argument('--model-path', type=str, required=True, help='Path to the ONNX detection model.')
+    parser.add_argument('--model-type', type=str, default='rtdetr', 
+                        choices=['rtdetr', 'yolo', 'rfdetr'], help='模型类型')
     parser.add_argument('--input', type=str, default='data/sample.jpg', help='Path to input image/video or camera ID.')
     parser.add_argument('--output-mode', type=str, choices=['save', 'show'], default='save', help='Output mode: save to file or show in a window.')
     parser.add_argument('--frame-skip', type=int, default=0, help='Number of frames to skip between processing.')
@@ -238,7 +240,6 @@ if __name__ == '__main__':
     parser.add_argument('--plate-conf-thres', type=float, default=None, help='Specific confidence threshold for plates.')
     parser.add_argument('--color-layer-model', type=str, default='models/color_layer.onnx', help='Path to color/layer ONNX model.')
     parser.add_argument('--ocr-model', type=str, default='models/ocr.onnx', help='Path to OCR ONNX model.')
-    parser.add_argument('--ocr-dict-yaml', type=str, default='models/ocr_dict.yaml', help='Path to OCR dict YAML file.')
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help='Set the logging level.')
     parser.add_argument('--save-frame', action='store_true', help='Save processed frames as images for video input.')
     parser.add_argument('--save-json', action='store_true', help='Save JSON results for each processed frame for video input.')

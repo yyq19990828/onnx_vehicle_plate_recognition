@@ -9,7 +9,6 @@
 统一API设计，减少代码冗余，提高可维护性
 """
 
-import onnxruntime
 import numpy as np
 import logging
 import time
@@ -19,7 +18,7 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple, Dict, Any, Optional, Callable
 from pathlib import Path
 
-from .utils import preload_onnx_libraries, get_best_available_providers
+from .utils import get_model_info
 from utils.image_processing import preprocess_image
 from utils.nms import non_max_suppression
 from utils.detection_metrics import evaluate_detection, print_metrics
@@ -59,43 +58,24 @@ class BaseOnnx(ABC):
             input_shape (Tuple[int, int]): 输入图像尺寸 (height, width)
             conf_thres (float): 置信度阈值
         """
-        preload_onnx_libraries()
-        
         self.onnx_path = onnx_path
         self.conf_thres = conf_thres
         
-        # 创建ONNX Runtime会话
-        providers = get_best_available_providers(self.onnx_path)
-        self.session = onnxruntime.InferenceSession(self.onnx_path, providers=providers)
-        self.input_name = self.session.get_inputs()[0].name
-        self.output_names = [output.name for output in self.session.get_outputs()]
+        # 使用统一的get_model_info函数获取所有模型信息，只创建一次session
+        model_info = get_model_info(self.onnx_path, input_shape)
+        if model_info is None:
+            raise RuntimeError(f"无法加载模型: {self.onnx_path}")
         
-        # 从ONNX模型中读取输入形状
-        self.input_shape = self._get_input_shape(input_shape)
+        # 从model_info中获取所有信息
+        self.session = model_info['session']
+        self.input_name = model_info['input_name']
+        self.output_names = model_info['output_names']
+        self.input_shape = model_info['input_shape']
+        self.class_names = model_info['class_names']
         
-        # 验证模型输出维度
-        self._validate_model()
+        # 记录输出形状信息
+        logging.info(f"模型输出形状: {model_info['output_shape']}")
     
-    def _get_input_shape(self, default_shape: Tuple[int, int]) -> Tuple[int, int]:
-        """从ONNX模型中获取输入形状"""
-        model_input_shape = self.session.get_inputs()[0].shape
-        if (len(model_input_shape) >= 4 and 
-            isinstance(model_input_shape[2], int) and model_input_shape[2] > 0 and
-            isinstance(model_input_shape[3], int) and model_input_shape[3] > 0):
-            shape = (model_input_shape[2], model_input_shape[3])
-            logging.info(f"从ONNX模型读取到固定输入形状: {shape}")
-            return shape
-        else:
-            logging.info(f"模型输入形状为动态 {model_input_shape}，使用默认形状: {default_shape}")
-            return default_shape
-    
-    def _validate_model(self):
-        """验证模型输出格式"""
-        dummy_input = np.random.randn(1, 3, self.input_shape[0], self.input_shape[1]).astype(np.float32)
-        outputs = self.session.run(None, {self.input_name: dummy_input})
-        output_shape = outputs[0].shape
-        logging.info(f"模型输出形状: {output_shape}")
-        return output_shape
     
     @abstractmethod
     def _postprocess(self, prediction: np.ndarray, conf_thres: float, **kwargs) -> List[np.ndarray]:
@@ -243,7 +223,8 @@ class RTDETROnnx(YoloOnnx):
     模型输出格式: [batch, 300, 19] = [batch, queries, (4_bbox + 15_classes)]
     """
     
-    def __init__(self, onnx_path: str, input_shape: Tuple[int, int] = (640, 640), conf_thres: float = 0.001):
+    def __init__(self, onnx_path: str, input_shape: Tuple[int, int] = (640, 640), 
+                 conf_thres: float = 0.001, iou_thres: float = 0.5):
         """
         初始化RT-DETR检测器
         
@@ -251,14 +232,13 @@ class RTDETROnnx(YoloOnnx):
             onnx_path (str): ONNX模型文件路径
             input_shape (Tuple[int, int]): 输入图像尺寸
             conf_thres (float): 置信度阈值，默认0.001
+            iou_thres (float): IoU阈值，RT-DETR不使用，保持接口统一
         """
         # 调用BaseOnnx初始化，跳过YoloOnnx的iou_thres设置
         BaseOnnx.__init__(self, onnx_path, input_shape, conf_thres)
         
-        # 验证RT-DETR输出格式
-        output_shape = self._validate_model()
-        if len(output_shape) != 3 or output_shape[1] != 300:
-            logging.warning(f"警告: 模型输出形状 {output_shape} 可能不是标准的RT-DETR格式")
+        # RT-DETR输出格式验证已在BaseOnnx的get_model_info中完成
+        # 这里可以添加额外的RT-DETR特定验证逻辑
     
     def _preprocess(self, image: np.ndarray) -> Tuple[np.ndarray, float, tuple]:
         """
@@ -293,8 +273,9 @@ class RTDETROnnx(YoloOnnx):
         scale_h = target_h / h
         scale_w = target_w / w
         
-        # 为了兼容基类，返回一个统一的scale
-        scale = min(scale_h, scale_w)  # 取最小缩放因子作为代表
+        # RT-DETR直接拉伸，需要返回实际的缩放因子
+        # 返回(scale_w, scale_h)作为scale，在后处理中使用
+        scale = (scale_w, scale_h)
         
         return tensor, scale, original_shape
     
@@ -361,31 +342,6 @@ class RTDETROnnx(YoloOnnx):
         # 坐标缩放在后续的evaluate阶段进行
         return outputs
     
-    def __call__(self, image: np.ndarray, conf_thres: Optional[float] = None) -> Tuple[List[np.ndarray], tuple]:
-        """
-        RT-DETR推理接口
-        
-        Args:
-            image (np.ndarray): 输入图像，BGR格式
-            conf_thres (Optional[float]): 置信度阈值
-            
-        Returns:
-            Tuple[List[np.ndarray], tuple]: 检测结果列表和原始图像形状
-        """
-        # 使用RT-DETR特定的预处理
-        input_tensor, _, original_shape = self._preprocess(image)
-        
-        # 运行推理
-        outputs = self.session.run(self.output_names, {self.input_name: input_tensor})
-        prediction = outputs[0]  # shape: [batch, 300, 19]
-        
-        # 使用传入的置信度阈值，如果没有则使用默认值
-        effective_conf_thres = conf_thres if conf_thres is not None else self.conf_thres
-        
-        # RT-DETR后处理
-        detections = self._postprocess(prediction, effective_conf_thres)
-        
-        return detections, original_shape
 
 
 class RFDETROnnx(BaseOnnx):
@@ -396,7 +352,8 @@ class RFDETROnnx(BaseOnnx):
     输出格式：两个独立的输出 - pred_boxes 和 pred_logits
     """
     
-    def __init__(self, onnx_path: str, input_shape: Tuple[int, int] = (576, 576), conf_thres: float = 0.001):
+    def __init__(self, onnx_path: str, input_shape: Tuple[int, int] = (576, 576), 
+                 conf_thres: float = 0.001, iou_thres: float = 0.5):
         """
         初始化RF-DETR检测器
         
@@ -404,6 +361,7 @@ class RFDETROnnx(BaseOnnx):
             onnx_path (str): ONNX模型文件路径
             input_shape (Tuple[int, int]): 输入图像尺寸，默认576x576
             conf_thres (float): 置信度阈值
+            iou_thres (float): IoU阈值，RF-DETR不使用，保持接口统一
         """
         super().__init__(onnx_path, input_shape, conf_thres)
         
@@ -460,7 +418,8 @@ class RFDETROnnx(BaseOnnx):
         # 计算缩放因子
         scale_h = target_h / h
         scale_w = target_w / w
-        scale = min(scale_h, scale_w)  # 取最小缩放因子作为代表
+        # RF-DETR直接拉伸，需要返回实际的缩放因子
+        scale = (scale_w, scale_h)
         
         return tensor, scale, original_shape
     
@@ -545,30 +504,6 @@ class RFDETROnnx(BaseOnnx):
         
         return results
     
-    def __call__(self, image: np.ndarray, conf_thres: Optional[float] = None) -> Tuple[List[np.ndarray], tuple]:
-        """
-        RF-DETR推理接口
-        
-        Args:
-            image (np.ndarray): 输入图像，BGR格式
-            conf_thres (Optional[float]): 置信度阈值
-            
-        Returns:
-            Tuple[List[np.ndarray], tuple]: 检测结果列表和原始图像形状
-        """
-        # 使用RF-DETR特定的预处理
-        input_tensor, _, original_shape = self._preprocess(image)
-        
-        # 运行推理
-        outputs = self.session.run(self.output_names, {self.input_name: input_tensor})
-        
-        # 使用传入的置信度阈值，如果没有则使用默认值
-        effective_conf_thres = conf_thres if conf_thres is not None else self.conf_thres
-        
-        # RF-DETR后处理
-        detections = self._postprocess(outputs, effective_conf_thres)
-        
-        return detections, original_shape
 
 
 def create_detector(model_type: str, onnx_path: str, **kwargs) -> BaseOnnx:

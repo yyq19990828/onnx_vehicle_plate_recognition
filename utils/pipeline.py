@@ -15,36 +15,50 @@ def initialize_models(args):
     """
     Initialize all the models required for the pipeline.
     """
-    # Initialize the detector
+    # Initialize the detector based on model type
     try:
-        from infer_onnx import DetONNX
-        detector = DetONNX(
-            args.model_path,
+        from infer_onnx.yolo_models import create_detector
+        detector = create_detector(
+            model_type=args.model_type,
+            onnx_path=args.model_path,
             conf_thres=args.conf_thres,
             iou_thres=args.iou_thres
         )
     except Exception as e:
         logging.error(f"Error initializing detector: {e}")
         logging.error("Please ensure the ONNX model path is correct and onnxruntime is installed.")
-        return None, None, None, None
+        return None
 
     # Initialize color/layer and OCR models
     from infer_onnx import ColorLayerONNX, OCRONNX
     color_layer_model_path = getattr(args, "color_layer_model", "models/color_layer.onnx")
     ocr_model_path = getattr(args, "ocr_model", "models/ocr.onnx")
-    ocr_dict_yaml_path = getattr(args, "ocr_dict_yaml", "models/ocr_dict.yaml")
+    plate_yaml_path = "models/plate.yaml"
     
-    with open(ocr_dict_yaml_path, "r", encoding="utf-8") as f:
-        dict_yaml = yaml.safe_load(f)
-        character = ["blank"] + dict_yaml["ocr_dict"] + [" "]
+    with open(plate_yaml_path, "r", encoding="utf-8") as f:
+        plate_yaml = yaml.safe_load(f)
+        character = ["blank"] + plate_yaml["ocr_dict"] + [" "]
         
     color_layer_classifier = ColorLayerONNX(color_layer_model_path)
     ocr_model = OCRONNX(ocr_model_path)
 
     # Load class names and colors from config
+    # 优先从detector模型的class_names属性获取（已在BaseOnnx初始化时从metadata读取）
+    if detector.class_names:
+        # 从ONNX模型metadata成功读取到类别名称
+        logging.info(f"从ONNX模型metadata读取到类别名称: {detector.class_names}")
+        max_class_id = max(detector.class_names.keys())
+        class_names = [detector.class_names.get(i, f"class_{i}") for i in range(max_class_id + 1)]
+    else:
+        # 回退到YAML配置文件
+        logging.info("ONNX模型metadata中未找到names字段，回退到YAML配置文件")
+        with open("models/det_config.yaml", "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        class_names = config["class_names"]
+    
+    # colors始终从YAML配置文件读取
     with open("models/det_config.yaml", "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    class_names = config["class_names"]
     colors = config["visual_colors"]
 
     return detector, color_layer_classifier, ocr_model, character, class_names, colors
@@ -64,8 +78,18 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
         h_img, w_img, _ = frame.shape
         roi_top_pixel = int(h_img * args.roi_top_ratio)
 
+        # Scale coordinates to original image size
+        scaled_detections = detections[0].copy()
+        if hasattr(detector, '__class__') and detector.__class__.__name__ in ['RTDETROnnx', 'RFDETROnnx']:
+            # RT-DETR and RF-DETR models直接拉伸图像，坐标需要从输入尺寸缩放到原始尺寸
+            # 坐标从输入尺寸变换回原始尺寸需要乘以缩放比例
+            scale_x = w_img / detector.input_shape[1]  # original_width / input_width
+            scale_y = h_img / detector.input_shape[0]  # original_height / input_height
+            scaled_detections[:, [0, 2]] *= scale_x  # x1, x2坐标缩放
+            scaled_detections[:, [1, 3]] *= scale_y  # y1, y2坐标缩放
+
         # Ensure detections are clipped within frame boundaries
-        clipped_detections = detections[0].copy()
+        clipped_detections = scaled_detections
         clipped_detections[:, 0] = np.clip(clipped_detections[:, 0], 0, w_img)
         clipped_detections[:, 1] = np.clip(clipped_detections[:, 1], 0, h_img)
         clipped_detections[:, 2] = np.clip(clipped_detections[:, 2], 0, w_img)
@@ -103,10 +127,10 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
                     color_index = int(np.argmax(preds_color))
                     layer_index = int(np.argmax(preds_layer))
 
-                    with open("models/plate_color_layer.yaml", "r", encoding="utf-8") as f:
-                        color_layer_yaml = yaml.safe_load(f)
-                    color_dict = color_layer_yaml["color_dict"]
-                    layer_dict = color_layer_yaml["layer_dict"]
+                    with open("models/plate.yaml", "r", encoding="utf-8") as f:
+                        plate_yaml = yaml.safe_load(f)
+                    color_dict = plate_yaml["color_dict"]
+                    layer_dict = plate_yaml["layer_dict"]
                     color_str = color_dict.get(color_index, "unknown")
                     layer_str = layer_dict.get(layer_index, "unknown")
 
@@ -143,7 +167,8 @@ def process_frame(frame, detector, color_layer_classifier, ocr_model, character,
                 })
 
     # 3. Draw detections
-    # The original detections array is used; filtering of what to draw is handled by the drawing function.
-    result_frame = draw_detections(frame.copy(), detections, class_names, colors, plate_results=plate_results)
+    # Use the scaled and clipped detections for drawing, not the original detections
+    scaled_detections_for_drawing = [clipped_detections] if detections and len(detections[0]) > 0 else []
+    result_frame = draw_detections(frame.copy(), scaled_detections_for_drawing, class_names, colors, plate_results=plate_results)
 
     return result_frame, output_data
