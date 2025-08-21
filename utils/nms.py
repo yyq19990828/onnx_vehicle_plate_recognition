@@ -35,32 +35,31 @@ def non_max_suppression(
     multi_label: bool = True,  # 默认值改为True，与Ultralytics一致
     max_det: int = 300,
     model_type: str = "yolo",  # 新增参数：模型类型
+    has_objectness: bool = False,  # 新增参数：是否有objectness分支，默认False
 ) -> list:
     """
     Perform Non-Maximum Suppression (NMS) on inference results.
     
-    与Ultralytics对齐的实现，正确处理YOLO格式：[batch, num_anchors, 4 + 1 + num_classes]
+    与Ultralytics对齐的实现，支持现代YOLO格式：
+    - 有objectness: [batch, num_anchors, 4 + 1 + num_classes] (传统YOLO)
+    - 无objectness: [batch, num_anchors, 4 + num_classes] (现代YOLO如YOLO11)
 
     Args:
-        prediction (np.ndarray): The model's raw output.
-                                For YOLO: shape [batch, num_anchors, 4 + 1 + num_classes]
-                                where 4=bbox, 1=objectness, num_classes=class scores
-        conf_thres (float): Confidence threshold.
-        iou_thres (float): IoU threshold for NMS.
-        classes (list, optional): A list of class indices to consider. Defaults to None.
-        agnostic (bool): If True, perform class-agnostic NMS. Defaults to False.
-        multi_label (bool): If True, consider multiple labels per box. Defaults to True.
-        max_det (int): Maximum number of detections to keep. Defaults to 300.
-        model_type (str): Model type ("yolo" or "rtdetr"). Defaults to "yolo".
+        prediction (np.ndarray): 模型原始输出，形状为[batch, num_anchors, features]
+        conf_thres (float): 置信度阈值
+        iou_thres (float): IoU阈值
+        classes (list, optional): 要考虑的类别索引列表
+        agnostic (bool): 是否执行类别无关的NMS
+        multi_label (bool): 是否考虑每个框的多个标签
+        max_det (int): 保留的最大检测数量
+        model_type (str): 模型类型，默认"yolo"
+        has_objectness (bool): 是否有objectness分支，默认False（适应现代YOLO）
 
     Returns:
-        list: A list of detections for each image in the batch.
-              Each detection is a tensor of shape [num_detections, 6] -> (x1, y1, x2, y2, conf, class_id).
+        list: 每个图像的检测结果列表，每个检测为[x1, y1, x2, y2, conf, class_id]格式
     """
     # Settings
-    min_wh, max_wh = 2, 7680  # (pixels) minimum and maximum box width and height
-    max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
-    time_limit = 0.5  # seconds to quit after
+    max_nms = 30000  # maximum number of boxes into NMS
 
     bs = prediction.shape[0]  # batch size
     assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
@@ -68,12 +67,11 @@ def non_max_suppression(
 
     output = [np.zeros((0, 6))] * bs
     for xi, x in enumerate(prediction):  # image index, image inference
-        # YOLO格式: [num_anchors, 4 + 1 + num_classes]
-        # 其中: x[:, :4] = bbox (xywh)
-        #      x[:, 4] = objectness 
-        #      x[:, 5:] = class scores
+        # YOLO格式处理：根据has_objectness参数决定如何解析输出
+        # 传统YOLO: [num_anchors, 4 + 1 + num_classes] - 有objectness
+        # 现代YOLO: [num_anchors, 4 + num_classes] - 无objectness
         
-        if model_type == "yolo" and x.shape[1] > 5:  # 标准YOLO格式，有objectness
+        if has_objectness:  # 传统YOLO格式，有objectness分支
             # 提取objectness和类别分数
             obj_conf = x[:, 4:5]  # objectness score
             cls_conf = x[:, 5:]   # class scores
@@ -117,7 +115,7 @@ def non_max_suppression(
                 # 获取最大类别索引
                 j = np.argmax(class_scores, axis=1, keepdims=True)
         
-        else:  # 简化格式或RT-DETR格式：没有单独的objectness
+        else:  # 现代YOLO格式（如YOLO11）：没有单独的objectness
             # 直接使用类别分数
             class_scores = x[:, 4:]
             
@@ -155,6 +153,7 @@ def non_max_suppression(
             x = x[x[:, 4].argsort()[::-1][:max_nms]]  # sort by confidence
 
         # Batched NMS
+        max_wh = 7680  # maximum box width and height
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
         

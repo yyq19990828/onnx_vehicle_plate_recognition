@@ -19,7 +19,7 @@ from typing import List, Tuple, Dict, Any, Optional, Callable
 from pathlib import Path
 
 from .utils import get_model_info
-from utils.image_processing import preprocess_image
+from utils.image_processing import preprocess_image, preprocess_image_ultralytics
 from utils.nms import non_max_suppression
 from utils.detection_metrics import evaluate_detection, print_metrics
 
@@ -44,6 +44,63 @@ def xywh2xyxy(x: np.ndarray) -> np.ndarray:
     y[..., :2] = xy - wh  # top left xy
     y[..., 2:] = xy + wh  # bottom right xy
     return y
+
+
+def clip_boxes(boxes: np.ndarray, shape: Tuple[int, int]) -> np.ndarray:
+    """
+    Clip bounding boxes to image boundaries.
+    
+    Source: ultralytics/utils/ops.py::clip_boxes
+    
+    Args:
+        boxes (np.ndarray): Bounding boxes to clip.
+        shape (tuple): Image shape as (height, width).
+        
+    Returns:
+        np.ndarray: Clipped bounding boxes.
+    """
+    boxes = boxes.copy()
+    boxes[..., [0, 2]] = boxes[..., [0, 2]].clip(0, shape[1])  # x1, x2
+    boxes[..., [1, 3]] = boxes[..., [1, 3]].clip(0, shape[0])  # y1, y2
+    return boxes
+
+
+def scale_boxes(img1_shape: Tuple[int, int], boxes: np.ndarray, img0_shape: Tuple[int, int], 
+                ratio_pad: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None, 
+                padding: bool = True) -> np.ndarray:
+    """
+    Rescale bounding boxes from one image shape to another.
+    
+    Source: ultralytics/utils/ops.py::scale_boxes
+    原函数路径: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/utils/ops.py
+    
+    Args:
+        img1_shape (tuple): Shape of the source image (height, width).
+        boxes (np.ndarray): Bounding boxes to rescale in format (N, 4).
+        img0_shape (tuple): Shape of the target image (height, width).
+        ratio_pad (tuple, optional): Tuple of ((ratio_w, ratio_h), (pad_w, pad_h)) for scaling.
+        padding (bool): Whether boxes are based on YOLO-style augmented images with padding.
+        
+    Returns:
+        np.ndarray: Rescaled bounding boxes in the same format as input.
+    """
+    if ratio_pad is None:  # calculate from img0_shape
+        gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
+        pad = (
+            round((img1_shape[1] - img0_shape[1] * gain) / 2 - 0.1),
+            round((img1_shape[0] - img0_shape[0] * gain) / 2 - 0.1),
+        )  # wh padding
+    else:
+        gain = ratio_pad[0][0]  # use provided ratio
+        pad = ratio_pad[1]
+
+    if padding:
+        boxes[..., 0] -= pad[0]  # x padding
+        boxes[..., 1] -= pad[1]  # y padding
+        boxes[..., 2] -= pad[0]  # x padding
+        boxes[..., 3] -= pad[1]  # y padding
+    boxes[..., :4] /= gain
+    return clip_boxes(boxes, img0_shape)
 
 
 class BaseOnnx(ABC):
@@ -95,7 +152,14 @@ class BaseOnnx(ABC):
             Tuple[List[np.ndarray], tuple]: 检测结果列表和原始图像形状
         """
         # 预处理
-        input_tensor, scale, original_shape = self._preprocess(image)
+        preprocess_result = self._preprocess(image)
+        if len(preprocess_result) == 3:
+            # 兼容旧版本返回值 (input_tensor, scale, original_shape)
+            input_tensor, scale, original_shape = preprocess_result
+            ratio_pad = None
+        else:
+            # 新版本返回值 (input_tensor, scale, original_shape, ratio_pad)
+            input_tensor, scale, original_shape, ratio_pad = preprocess_result
         
         # 推理
         outputs = self.session.run(self.output_names, {self.input_name: input_tensor})
@@ -108,7 +172,7 @@ class BaseOnnx(ABC):
             detections = self._postprocess(outputs, effective_conf_thres, **kwargs)
         else:
             prediction = outputs[0]
-            detections = self._postprocess(prediction, effective_conf_thres, scale=scale, **kwargs)
+            detections = self._postprocess(prediction, effective_conf_thres, scale=scale, ratio_pad=ratio_pad, **kwargs)
         
         return detections, original_shape
     
@@ -126,7 +190,8 @@ class YoloOnnx(BaseOnnx):
     
     def __init__(self, onnx_path: str, input_shape: Tuple[int, int] = (640, 640), 
                  conf_thres: float = 0.5, iou_thres: float = 0.5, 
-                 multi_label: bool = True):  # 新增multi_label参数，默认True与Ultralytics一致
+                 multi_label: bool = True, use_ultralytics_preprocess: bool = True,
+                 has_objectness: bool = False):
         """
         初始化YOLO检测器
         
@@ -136,10 +201,14 @@ class YoloOnnx(BaseOnnx):
             conf_thres (float): 置信度阈值
             iou_thres (float): IoU阈值
             multi_label (bool): 是否允许多标签检测，默认True
+            use_ultralytics_preprocess (bool): 是否使用Ultralytics兼容的预处理
+            has_objectness (bool): 模型是否有objectness分支，默认False（适应现代YOLO）
         """
         super().__init__(onnx_path, input_shape, conf_thres)
         self.iou_thres = iou_thres
         self.multi_label = multi_label
+        self.use_ultralytics_preprocess = use_ultralytics_preprocess
+        self.has_objectness = has_objectness
         self.model_type = self._detect_model_type()  # 自动检测模型类型
     
     def _detect_model_type(self) -> str:
@@ -163,8 +232,29 @@ class YoloOnnx(BaseOnnx):
         
         return "yolo"  # 默认返回yolo
     
+    def _preprocess(self, image: np.ndarray) -> Tuple[np.ndarray, float, tuple, Optional[tuple]]:
+        """
+        YOLO预处理，支持Ultralytics兼容模式
+        
+        Args:
+            image (np.ndarray): 输入图像，BGR格式
+            
+        Returns:
+            Tuple: (input_tensor, scale, original_shape, ratio_pad)
+        """
+        if self.use_ultralytics_preprocess:
+            # 使用Ultralytics兼容的预处理，返回ratio_pad信息
+            from utils.image_processing import UltralyticsLetterBox
+            letterbox = UltralyticsLetterBox(new_shape=self.input_shape)
+            input_tensor, scale, original_shape, ratio_pad = letterbox(image)
+            return input_tensor, scale, original_shape, (((scale, scale), ratio_pad))
+        else:
+            # 使用原始预处理方法
+            input_tensor, scale, original_shape = preprocess_image(image, self.input_shape)
+            return input_tensor, scale, original_shape, None
+    
     def _postprocess(self, prediction: np.ndarray, conf_thres: float, scale: float = 1.0, 
-                    iou_thres: Optional[float] = None) -> List[np.ndarray]:
+                    ratio_pad: Optional[tuple] = None, iou_thres: Optional[float] = None) -> List[np.ndarray]:
         """
         YOLO模型后处理，包含NMS
         
@@ -172,30 +262,79 @@ class YoloOnnx(BaseOnnx):
             prediction (np.ndarray): 模型原始输出
             conf_thres (float): 置信度阈值
             scale (float): 图像缩放因子
+            ratio_pad (Optional[tuple]): Ratio和padding信息 (((ratio_w, ratio_h), (pad_w, pad_h)))
             iou_thres (Optional[float]): IoU阈值
             
         Returns:
             List[np.ndarray]: 后处理后的检测结果
         """
-        # 将归一化坐标转换为像素坐标
-        prediction[..., 0] *= self.input_shape[1]  # x_center
-        prediction[..., 1] *= self.input_shape[0]  # y_center
-        prediction[..., 2] *= self.input_shape[1]  # width
-        prediction[..., 3] *= self.input_shape[0]  # height
+        # 自适应处理YOLO输出格式
+        # YOLO官方库输出: [B, bbox+C, N] 例如 (1, 84, 8400)
+        # 我们的处理逻辑: [B, N, bbox+C] 例如 (1, 8400, 84)
+        original_shape = prediction.shape
         
-        # NMS后处理，传递multi_label和model_type参数
+        # 鲁棒的维度判断逻辑：
+        # 1. 如果第二维小于第三维，且第二维在合理的特征数范围内(4-200)，则可能是[B, C, N]格式
+        # 2. 特征数应该是4+类别数，一般在80-200之间比较合理
+        if (prediction.shape[1] < prediction.shape[2] and 
+            4 <= prediction.shape[1] <= 200 and
+            prediction.shape[2] > prediction.shape[1]):
+            # 转换为我们期望的格式: [B, N, C]
+            prediction = prediction.transpose(0, 2, 1)
+            logging.info(f"YOLO输出格式自适应转换: {original_shape} -> {prediction.shape}")
+        
+        # 验证最终格式的合理性
+        if prediction.shape[2] < 4:
+            raise ValueError(f"YOLO输出格式异常: {prediction.shape}，特征维度应该至少包含4个bbox坐标")
+        
+        # 检查坐标格式并转换为像素坐标（对齐Ultralytics实现）
+        bbox_coords = prediction[..., :4]
+        max_coord = np.max(np.abs(bbox_coords))
+        
+        if max_coord <= 1.0:
+            # 归一化坐标，需要转换为像素坐标
+            prediction[..., 0] *= self.input_shape[1]  # x_center
+            prediction[..., 1] *= self.input_shape[0]  # y_center
+            prediction[..., 2] *= self.input_shape[1]  # width
+            prediction[..., 3] *= self.input_shape[0]  # height
+        else:
+            # 已经是像素坐标，无需转换
+            pass
+        
+        # NMS后处理，传递multi_label、model_type和objectness信息
         effective_iou_thres = iou_thres if iou_thres is not None else self.iou_thres
         detections = non_max_suppression(
             prediction, 
             conf_thres=conf_thres, 
             iou_thres=effective_iou_thres,
             multi_label=self.multi_label,
-            model_type=self.model_type
+            model_type=self.model_type,
+            has_objectness=self.has_objectness
         )
         
-        # 缩放回原图尺寸
+        # 使用Ultralytics风格的坐标还原
         if detections and len(detections[0]) > 0:
-            detections[0][:, :4] /= scale
+            if ratio_pad is not None and self.use_ultralytics_preprocess:
+                # 使用scale_boxes进行精确的坐标还原
+                # 从输入尺寸坐标还原到原图坐标
+                boxes = detections[0][:, :4].copy()
+                original_shape = (int(self.input_shape[0] / ratio_pad[0][0]), 
+                                int(self.input_shape[1] / ratio_pad[0][1]))
+                
+                # 使用scale_boxes函数进行坐标还原
+                scaled_boxes = scale_boxes(
+                    img1_shape=self.input_shape,  # 输入尺寸
+                    boxes=boxes,                   # 检测框坐标
+                    img0_shape=original_shape,     # 原图尺寸
+                    ratio_pad=ratio_pad,           # ratio和padding信息
+                    padding=True                   # 使用padding
+                )
+                
+                # 更新检测结果中的坐标
+                detections[0][:, :4] = scaled_boxes
+            else:
+                # 回退到简单的缩放方法
+                detections[0][:, :4] /= scale
             
         return detections
     
@@ -723,14 +862,16 @@ class DatasetEvaluator:
             times['inference'].append((inference_end - preprocess_start) * 1000)
             times['postprocess'].append((postprocess_end - inference_end) * 1000)
             
-            # 处理检测结果，将坐标从输入尺寸缩放到原图尺寸（与ultralytics一致）
+            # 处理检测结果（坐标已在模型后处理中正确缩放）
             if detections and len(detections[0]) > 0:
                 pred = detections[0].copy()  # [N, 6] format: [x1, y1, x2, y2, conf, class]
-                # 缩放坐标从输入尺寸到原图尺寸（复刻 ultralytics pred_to_json 逻辑）
-                # RT-DETR和RF-DETR需要特殊的坐标缩放
+                
+                # 对于使用了新坐标处理逻辑的YOLO模型，检测结果已经在原图坐标系
+                # 对于RT-DETR和RF-DETR等特殊模型，仍需要额外缩放
                 if type(self.detector).__name__ in ['RTDETROnnx', 'RFDETROnnx']:
                     pred[:, [0, 2]] = pred[:, [0, 2]] * img_width / self.detector.input_shape[1]   # x坐标缩放
                     pred[:, [1, 3]] = pred[:, [1, 3]] * img_height / self.detector.input_shape[0]  # y坐标缩放
+                # YoloOnnx使用新的坐标处理逻辑，坐标已正确缩放，无需额外处理
             else:
                 pred = np.zeros((0, 6))
             
