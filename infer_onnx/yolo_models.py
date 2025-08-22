@@ -161,6 +161,15 @@ class BaseOnnx(ABC):
             # 新版本返回值 (input_tensor, scale, original_shape, ratio_pad)
             input_tensor, scale, original_shape, ratio_pad = preprocess_result
         
+        # 检查模型期望的batch维度并调整输入
+        model_input_shape = self.session.get_inputs()[0].shape
+        expected_batch_size = model_input_shape[0] if isinstance(model_input_shape[0], int) and model_input_shape[0] > 0 else 1
+        
+        if expected_batch_size > 1 and input_tensor.shape[0] == 1:
+            # 如果模型期望batch>1，但输入是batch=1，则复制输入以满足要求
+            input_tensor = np.repeat(input_tensor, expected_batch_size, axis=0)
+            logging.debug(f"调整输入batch维度从1到{expected_batch_size}")
+        
         # 推理
         outputs = self.session.run(self.output_names, {self.input_name: input_tensor})
         
@@ -173,6 +182,11 @@ class BaseOnnx(ABC):
         else:
             prediction = outputs[0]
             detections = self._postprocess(prediction, effective_conf_thres, scale=scale, ratio_pad=ratio_pad, **kwargs)
+        
+        # 如果输入是多batch但只处理一张图片，只返回第一个batch的结果
+        if (expected_batch_size > 1 and len(detections) > 1):
+            detections = [detections[0]]
+            logging.debug(f"只返回第一个batch的检测结果")
         
         return detections, original_shape
     
@@ -505,7 +519,11 @@ class RFDETROnnx(BaseOnnx):
         super().__init__(onnx_path, input_shape, conf_thres)
         
         # 验证RF-DETR输出格式
-        dummy_input = np.random.randn(1, 3, self.input_shape[0], self.input_shape[1]).astype(np.float32)
+        # 检查模型期望的batch维度
+        model_input_shape = self.session.get_inputs()[0].shape
+        expected_batch_size = model_input_shape[0] if isinstance(model_input_shape[0], int) and model_input_shape[0] > 0 else 1
+        
+        dummy_input = np.random.randn(expected_batch_size, 3, self.input_shape[0], self.input_shape[1]).astype(np.float32)
         outputs = self.session.run(None, {self.input_name: dummy_input})
         
         if len(outputs) != 2:
@@ -576,7 +594,13 @@ class RFDETROnnx(BaseOnnx):
         Returns:
             List[np.ndarray]: 后处理后的检测结果
         """
-        pred_boxes, pred_logits = outputs[0], outputs[1]  # [batch, 300, 4], [batch, 300, 15]
+        # 根据实际输出形状确定pred_logits和pred_boxes
+        # 输出0: (4, 300, 4) - 应该是pred_boxes
+        # 输出1: (4, 300, 15) - 应该是pred_logits
+        if outputs[0].shape[2] == 4 and outputs[1].shape[2] > 4:
+            pred_boxes, pred_logits = outputs[0], outputs[1]
+        else:
+            pred_logits, pred_boxes = outputs[0], outputs[1]
         
         bs = pred_boxes.shape[0]
         num_queries = pred_boxes.shape[1]

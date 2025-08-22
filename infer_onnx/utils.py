@@ -211,10 +211,15 @@ def get_model_info(model_path: str, default_input_shape: tuple = (640, 640)) -> 
                 class_names = {i: str(name) for i, name in enumerate(names)}
         
         # 验证模型输出
-        dummy_input = np.random.randn(1, 3, input_shape[0], input_shape[1]).astype(np.float32)
+        # 检查模型期望的batch维度
+        model_input_shape = session.get_inputs()[0].shape
+        expected_batch_size = model_input_shape[0] if isinstance(model_input_shape[0], int) and model_input_shape[0] > 0 else 1
+        
+        dummy_input = np.random.randn(expected_batch_size, 3, input_shape[0], input_shape[1]).astype(np.float32)
         outputs = session.run(None, {input_name: dummy_input})
         output_shape = outputs[0].shape
         logging.info(f"模型输出形状: {output_shape}")
+        logging.info(f"使用batch大小: {expected_batch_size}")
         
         return {
             'session': session,
