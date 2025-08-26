@@ -6,7 +6,7 @@
 
 提供 `--save-inputs` 和 `--save-outputs` 选项的命令行工具通常使用这些格式。
 
-通常，您只会将保存的输入或 `RunResults` 与其他 Polygraphy API 或工具一起使用（如[此示例](../../cli//run/06_comparing_with_custom_output_data/)或[此示例](../../cli/inspect/05_inspecting_inference_outputs/))，但有时，您可能希望手动处理底层的 NumPy 数组。
+通常，您只会将保存的输入或 `RunResults` 与其他 Polygraphy API 或工具一起使用(如[此示例](../../cli//run/06_comparing_with_custom_output_data/)或[此示例](../../cli/inspect/05_inspecting_inference_outputs/))，但有时，您可能希望手动处理底层的 NumPy 数组。
 
 Polygraphy 包含一些方便的 API，可以轻松加载和操作这些对象。
 

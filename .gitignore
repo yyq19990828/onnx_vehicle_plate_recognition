@@ -32,6 +32,9 @@ ENV/
 *.tflite
 *.weights
 *.yaml
+*.engine
+*.plan
+*.trt
 
 # 其他常见忽略
 .DS_Store
